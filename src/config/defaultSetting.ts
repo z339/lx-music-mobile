@@ -71,6 +71,11 @@ const defaultSetting: LX.AppSetting = {
   'download.fileName': '歌名 - 歌手',
 
   'sync.enable': false,
+  'sync.type': 'server',
+  'sync.webdav.url': '',
+  'sync.webdav.username': '',
+  'sync.webdav.password': '',
+  'sync.webdav.path': '',
 
   // 'theme.id': 'blue_plus',
   'theme.id': 'green',

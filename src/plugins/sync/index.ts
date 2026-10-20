@@ -5,3 +5,10 @@ export {
   disconnectServer,
   getStatus,
 } from './client'
+
+export {
+  getWebDavConfig,
+  testConnection,
+  syncNow,
+} from './webdav'
+export type { WebDAVConfig } from './webdav'

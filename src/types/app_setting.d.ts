@@ -355,6 +355,31 @@ declare global {
        * 是否启用同步
        */
       'sync.enable': boolean
+
+      /**
+       * 数据同步方式：局域网同步服务(server) / WebDAV 同步(webdav)
+       */
+      'sync.type': 'server' | 'webdav'
+
+      /**
+       * WebDAV 同步 - 服务器地址
+       */
+      'sync.webdav.url': string
+
+      /**
+       * WebDAV 同步 - 用户名
+       */
+      'sync.webdav.username': string
+
+      /**
+       * WebDAV 同步 - 密码
+       */
+      'sync.webdav.password': string
+
+      /**
+       * WebDAV 同步 - 远程目录（留空表示根目录）
+       */
+      'sync.webdav.path': string
     }
   }
 }
