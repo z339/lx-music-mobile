@@ -3,26 +3,35 @@ import { View } from 'react-native'
 
 import InputItem from '../../components/InputItem'
 import Button from '../../components/Button'
+import CheckBoxItem from '../../components/CheckBoxItem'
+import DebugLogs from './DebugLogs'
 import Text from '@/components/common/Text'
+import Loading from '@/components/common/Loading'
 import { useI18n } from '@/lang'
-import type { Message } from '@/lang'
 import { updateSetting } from '@/core/common'
 import { useSettingValue } from '@/store/setting/hook'
-import { useStatus } from '@/store/sync/hook'
-import { createStyle, toast } from '@/utils/tools'
+import { createStyle, toast, tipDialog } from '@/utils/tools'
+import { useTheme } from '@/store/theme/hook'
 import { getWebDavConfig, testConnection, syncNow } from '@/plugins/sync/webdav'
 
 const addressRxp = /^https?:\/\/\S+/i
 
+type ActionType = 'test' | 'sync' | null
+
 const WebDavConfig = memo(() => {
   const t = useI18n()
-  const syncStatus = useStatus()
+  const theme = useTheme()
   const url = useSettingValue('sync.webdav.url')
   const username = useSettingValue('sync.webdav.username')
   const password = useSettingValue('sync.webdav.password')
   const path = useSettingValue('sync.webdav.path')
+  const syncList = useSettingValue('sync.webdav.syncList')
+  const syncDislike = useSettingValue('sync.webdav.syncDislike')
+  const lastSyncTime = useSettingValue('sync.webdav.lastSyncTime')
+  const debugEnable = useSettingValue('sync.webdav.debugEnable')
 
-  const [testing, setTesting] = useState(false)
+  // 当前正在执行的动作（用于按钮 loading 与禁用）
+  const [action, setAction] = useState<ActionType>(null)
 
   const handleUrlChange = useCallback((text: string, cb: (v: string) => void) => {
     const v = text.trim()
@@ -44,31 +53,78 @@ const WebDavConfig = memo(() => {
     }
 
   const handleTest = useCallback(async () => {
+    if (action) return
     const config = getWebDavConfig()
     if (!config.url) {
-      toast(t('setting_sync_webdav_url_empty'))
+      await tipDialog({ title: t('setting_sync_webdav_test'), message: t('setting_sync_webdav_url_empty') })
       return
     }
-    setTesting(true)
-    const err = await testConnection(config)
-    setTesting(false)
-    if (err) toast(t('setting_sync_webdav_test_fail', { message: err.message }), 'long')
-    else toast(t('setting_sync_webdav_test_success'))
-  }, [t])
+    setAction('test')
+    try {
+      const err = await testConnection(config)
+      if (err) {
+        await tipDialog({
+          title: t('setting_sync_webdav_test'),
+          message: t('setting_sync_webdav_test_fail', { message: err.message }),
+        })
+      } else {
+        toast(t('setting_sync_webdav_test_success'))
+      }
+    } catch (err) {
+      await tipDialog({
+        title: t('setting_sync_webdav_test'),
+        message: t('setting_sync_webdav_test_fail', { message: (err as Error).message }),
+      })
+    } finally {
+      setAction(null)
+    }
+  }, [action, t])
 
-  const handleSync = useCallback(() => {
-    void syncNow()
-  }, [])
+  const handleSync = useCallback(async () => {
+    if (action) return
+    if (!url) {
+      await tipDialog({ title: t('setting_sync_webdav_sync_now'), message: t('setting_sync_webdav_url_empty') })
+      return
+    }
+    if (!syncList && !syncDislike) {
+      await tipDialog({ title: t('setting_sync_webdav_sync_now'), message: t('setting_sync_webdav_no_task') })
+      return
+    }
+    setAction('sync')
+    try {
+      const result = await syncNow()
+      if (result.success) {
+        toast(t('setting_sync_webdav_sync_success'))
+      } else {
+        // 错误信息形如 "i18nKey|详细错误"，拆分后分别翻译
+        const [key, detail] = (result.error ?? '').split('|')
+        const message = detail
+          ? `${t(key as Parameters<typeof t>[0])}\n${detail}`
+          : t(key as Parameters<typeof t>[0])
+        await tipDialog({ title: t('setting_sync_webdav_sync_now'), message })
+      }
+    } catch (err) {
+      await tipDialog({
+        title: t('setting_sync_webdav_sync_now'),
+        message: t('setting_sync_webdav_sync_fail', { message: (err as Error).message }),
+      })
+    } finally {
+      setAction(null)
+    }
+  }, [action, url, syncList, syncDislike, t])
 
-  const statusText = (): string => {
-    const msg = syncStatus.message
-    if (!msg) return syncStatus.status ? t('setting_sync_status_enabled') : t('sync_status_disabled')
-    // 内部状态以 i18n key（setting_sync 前缀）存储，错误则直接显示原始信息
-    return msg.startsWith('setting_sync') ? t(msg as keyof Message) : msg
-  }
+  const lastSyncText = (() => {
+    if (!lastSyncTime) return t('setting_sync_webdav_never_synced')
+    try {
+      const d = new Date(lastSyncTime)
+      const pad = (n: number) => `${n}`.padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    } catch {
+      return t('setting_sync_webdav_never_synced')
+    }
+  })()
 
-  const isSyncing = syncStatus.status
-  const canSync = !!url && !isSyncing && !testing
+  const busy = action != null
 
   return (
     <View>
@@ -103,12 +159,36 @@ const WebDavConfig = memo(() => {
         spellCheck={false}
         placeholder={t('setting_sync_webdav_path_tip')} />
 
-      <View style={styles.btns}>
-        <Button disabled={testing} onPress={handleTest}>{t('setting_sync_webdav_test')}</Button>
-        <Button disabled={!canSync} onPress={handleSync}>{t('setting_sync_webdav_sync_now')}</Button>
+      <View style={styles.options}>
+        <CheckBoxItem
+          check={syncList}
+          onChange={(v) => { updateSetting({ 'sync.webdav.syncList': v }) }}
+          label={t('setting_sync_webdav_sync_list')} />
+        <CheckBoxItem
+          check={syncDislike}
+          onChange={(v) => { updateSetting({ 'sync.webdav.syncDislike': v }) }}
+          label={t('setting_sync_webdav_sync_dislike')} />
+        <CheckBoxItem
+          check={debugEnable}
+          onChange={(v) => { updateSetting({ 'sync.webdav.debugEnable': v }) }}
+          label={t('setting_sync_webdav_debug_enable')} />
       </View>
 
-      <Text style={styles.status} size={13}>{t('setting_sync_status', { status: statusText() })}</Text>
+      {debugEnable ? <DebugLogs /> : null}
+
+      <Text style={styles.lastSync} size={13} color={theme['c-font-label']}>
+        {t('setting_sync_webdav_last_sync_time', { time: lastSyncText })}
+      </Text>
+
+      <View style={styles.btns}>
+        <Button disabled={busy} onPress={handleTest}>
+          {action === 'test' ? t('setting_sync_webdav_testing') : t('setting_sync_webdav_test')}
+        </Button>
+        <Button disabled={busy || !url} onPress={handleSync}>
+          {action === 'sync' ? t('setting_sync_webdav_syncing') : t('setting_sync_webdav_sync_now')}
+        </Button>
+        {busy ? <Loading size={14} style={styles.loading} /> : null}
+      </View>
     </View>
   )
 })
@@ -117,13 +197,22 @@ export default WebDavConfig
 
 
 const styles = createStyle({
+  options: {
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  lastSync: {
+    marginLeft: 25,
+    marginTop: 2,
+    marginBottom: 6,
+  },
   btns: {
     flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 8,
     marginLeft: 15,
   },
-  status: {
-    marginLeft: 25,
-    marginTop: 10,
+  loading: {
+    marginLeft: 4,
   },
 })

@@ -18,6 +18,7 @@ import {
   mergeDislikeFullDataFromSnapshot,
 } from './merge'
 import settingState from '@/store/setting/state'
+import { log, logError } from './logger'
 
 // ----------------------------------------------------------------------------
 // 歌单同步（与 any-listen 的 webdav/modules/list.ts + shared/list/index.ts 对齐）
@@ -30,6 +31,7 @@ const checkListDirs = async (webDAV: WebDAV) => {
       await webDAV.ls(dir)
     } catch (error) {
       if (!is404Error(error)) throw error
+      log('info', `创建缺失的目录: ${dir}`)
       await webDAV.mkdir(dir)
     }
   }
@@ -41,13 +43,18 @@ const runListSync = async (
 ) => {
   const deviceId = getDeviceId()
   const snapshotInfo = await options.getSnapshotInfo()
+  log('info', `歌单同步开始：设备ID=${deviceId}，远端 latest=${snapshotInfo?.latest || '(空)'}，本机快照=${snapshotInfo?.clients?.[deviceId]?.snapshotKey || '(无)'}`)
   if (snapshotInfo?.latest) {
     const client = snapshotInfo.clients[deviceId]
     if (client?.snapshotKey) {
       const localData = toRemoteListData(await getLocalListData())
       const localKey = getListDataMD5(localData)
+      log('info', `本地数据 MD5=${localKey}，远端 latest=${snapshotInfo.latest}，本机快照=${client.snapshotKey}`)
       if (localKey === snapshotInfo.latest) {
-        if (localKey === client.snapshotKey) return
+        if (localKey === client.snapshotKey) {
+          log('info', '本地与远端完全一致，无需同步')
+          return
+        }
         client.snapshotKey = localKey
         client.lastSyncTime = Date.now()
         await options.saveSnapshotInfo(snapshotInfo)
@@ -57,6 +64,7 @@ const runListSync = async (
         return
       }
       if (localKey === client.snapshotKey) {
+        log('info', '本地未变更，用远端最新快照覆盖本地')
         const latest = await options.getSnapshotData(snapshotInfo.latest)
         if (!latest) throw new Error('Latest snapshot data not found')
         await options.overwriteLocalList(latest)
@@ -78,6 +86,7 @@ const runListSync = async (
         ])
       }
       if (!latestData || !snapshotData) throw new Error('Snapshot data not found')
+      log('info', '本地与远端均有变更，执行三方合并')
       const newData = mergeFullDataFromSnapshot(
         localListData,
         latestData,
@@ -96,6 +105,7 @@ const runListSync = async (
         getLocalListData().then((d) => toRemoteListData(d)),
       ])
       if (!latestData) throw new Error('Snapshot data not found')
+      log('info', '本机无历史快照，向用户询问合并方式')
       const [merged, updateLocal] = await mergeFullData(
         localListData,
         latestData,
@@ -112,6 +122,7 @@ const runListSync = async (
     throw new Error('Local list data is different from the latest snapshot data, but no merge mode is provided')
   }
   const localListData = toRemoteListData(await getLocalListData())
+  log('info', '远端无任何快照，将本地数据上传为首个快照')
   const sdm = new SnapshotDataManage(options, getListDataMD5)
   await sdm.init(snapshotInfo)
   await sdm.saveSnapshotData(deviceId, localListData)
@@ -184,6 +195,7 @@ const checkDislikeDirs = async (webDAV: WebDAV) => {
       await webDAV.ls(dir)
     } catch (error) {
       if (!is404Error(error)) throw error
+      log('info', `创建缺失的目录: ${dir}`)
       await webDAV.mkdir(dir)
     }
   }
@@ -195,12 +207,17 @@ const runDislikeSync = async (
 ) => {
   const deviceId = getDeviceId()
   const snapshotInfo = await options.getSnapshotInfo()
+  log('info', `不喜欢规则同步开始：设备ID=${deviceId}，远端 latest=${snapshotInfo?.latest || '(空)'}`)
   if (snapshotInfo?.latest) {
     const client = snapshotInfo.clients[deviceId]
     if (client?.snapshotKey) {
       const localKey = getDislikeRulesMD5(await getLocalDislikeData())
+      log('info', `本地规则 MD5=${localKey}，远端 latest=${snapshotInfo.latest}，本机快照=${client.snapshotKey}`)
       if (localKey === snapshotInfo.latest) {
-        if (localKey === client.snapshotKey) return
+        if (localKey === client.snapshotKey) {
+          log('info', '本地与远端完全一致，无需同步')
+          return
+        }
         client.snapshotKey = localKey
         client.lastSyncTime = Date.now()
         await options.saveSnapshotInfo(snapshotInfo)
@@ -259,6 +276,7 @@ const runDislikeSync = async (
     throw new Error('Local dislike data is different from the latest snapshot data, but no merge mode is provided')
   }
   const localData = await getLocalDislikeData()
+  log('info', '远端无规则快照，将本地规则上传为首个快照')
   const sdm = new SnapshotDataManage(options, getDislikeRulesMD5)
   await sdm.init(snapshotInfo)
   await sdm.saveSnapshotData(deviceId, localData)

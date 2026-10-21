@@ -76,6 +76,10 @@ const defaultSetting: LX.AppSetting = {
   'sync.webdav.username': '',
   'sync.webdav.password': '',
   'sync.webdav.path': '',
+  'sync.webdav.syncList': true,
+  'sync.webdav.syncDislike': true,
+  'sync.webdav.lastSyncTime': 0,
+  'sync.webdav.debugEnable': false,
 
   // 'theme.id': 'blue_plus',
   'theme.id': 'green',

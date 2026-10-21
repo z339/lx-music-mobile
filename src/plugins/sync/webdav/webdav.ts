@@ -1,4 +1,5 @@
 import { WebDAVClient, is404Error, type WebDAVItem } from './client'
+import { log, logError } from './logger'
 import { CONSTANTS, generateId } from './shared'
 import type { WebDAVConfig } from './types'
 
@@ -23,10 +24,13 @@ export class WebDAV {
   }
 
   async checkConnection(): Promise<Error | null> {
+    log('info', `开始测试连接: ${this.client.getBaseUrl()}${this.path ? ` (远程目录: ${this.path})` : ''}`)
     try {
       await this.client.ls()
+      log('info', '连接测试成功')
       return null
     } catch (err) {
+      logError('连接测试失败', err)
       return err as Error
     }
   }
@@ -39,19 +43,25 @@ export class WebDAV {
   async checkLocked(): Promise<boolean> {
     const files = await this.ls()
     const file = files.find((f) => f.name.startsWith(CONSTANTS.lockFilePrefix))
-    if (!file) return false
+    if (!file) {
+      log('info', '未发现同步锁，可以开始同步')
+      return false
+    }
     const time = parseInt(file.name.replace(CONSTANTS.lockFilePrefix, ''))
     if (isNaN(time)) return false
     if (Date.now() - time > 1000 * 60 * 2) {
+      log('warn', `同步锁 ${file.name} 已超过 2 分钟，视为过期并清理`)
       void this.rm(file.name) // 锁超过 2 分钟视为过期，自动清理
       return false
     }
+    log('info', `检测到其他设备的同步锁: ${file.name}`)
     return true
   }
 
   private async handleLock(): Promise<boolean> {
     const now = Date.now()
     const lockFileName = `${CONSTANTS.lockFilePrefix}${now}-${generateId()}`
+    log('info', `尝试获取同步锁: ${lockFileName}`)
     await this.put(lockFileName, '')
     const files = await this.ls()
     for (const file of files) {
@@ -65,6 +75,7 @@ export class WebDAV {
       }
     }
     this.lockFileName = lockFileName
+    log('info', `已获取同步锁: ${lockFileName}`)
     return true
   }
 
@@ -115,11 +126,15 @@ export class WebDAV {
   }
 
   async unlock() {
+    log('info', '正在释放同步锁')
     const files = await this.ls()
     const target = files
       .filter((f) => f.name.startsWith(CONSTANTS.lockFilePrefix))
       .find((f) => f.name === this.lockFileName)
-    if (target) await this.rm(target.name)
+    if (target) {
+      await this.rm(target.name)
+      log('info', `已释放同步锁: ${target.name}`)
+    }
   }
 
   async put(path: string, data: string) {

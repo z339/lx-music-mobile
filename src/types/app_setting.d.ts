@@ -380,6 +380,26 @@ declare global {
        * WebDAV 同步 - 远程目录（留空表示根目录）
        */
       'sync.webdav.path': string
+
+      /**
+       * WebDAV 同步 - 是否同步歌曲列表
+       */
+      'sync.webdav.syncList': boolean
+
+      /**
+       * WebDAV 同步 - 是否同步「不喜欢」规则
+       */
+      'sync.webdav.syncDislike': boolean
+
+      /**
+       * WebDAV 同步 - 上次同步成功的时间戳（0 表示从未同步）
+       */
+      'sync.webdav.lastSyncTime': number
+
+      /**
+       * WebDAV 同步 - 是否开启调试日志
+       */
+      'sync.webdav.debugEnable': boolean
     }
   }
 }

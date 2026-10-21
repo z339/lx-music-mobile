@@ -1,4 +1,5 @@
 import type { SnapshotInfo } from './types'
+import { log } from './logger'
 
 export interface Options<T> {
   getSnapshotInfo: () => Promise<SnapshotInfo | null>
@@ -50,6 +51,7 @@ export class SnapshotDataManage<T> {
       }
     }
     if (!removedKeys.length) return false
+    log('info', `清理旧快照 ${removedKeys.length} 个`)
     await this.options.saveSnapshotList(this.snapshotList)
     for (const key of removedKeys) await this.options.removeSnapshot(key)
     return true
@@ -58,6 +60,7 @@ export class SnapshotDataManage<T> {
   saveSnapshotData = async (deviceId: string, data: T): Promise<void> => {
     await this.init()
     const md5 = this.getMD5(data)
+    log('info', `保存快照: key=${md5}，设备=${deviceId}`)
     this.snapshotInfo.latest = md5
     this.snapshotInfo.clients[deviceId] = { snapshotKey: md5, lastSyncTime: Date.now() }
     const idx = this.snapshotList.indexOf(md5)

@@ -1,3 +1,5 @@
+import { log, logError } from './logger'
+
 export interface WebDAVClientOptions {
   baseUrl: string
   username?: string
@@ -66,6 +68,11 @@ export class WebDAVClient {
     if (options.username) {
       this.authHeader = `Basic ${base64FromUtf8(`${options.username}:${options.password || ''}`)}`
     }
+    log('info', `创建 WebDAV 客户端: baseUrl=${this.baseUrl}, 用户名=${options.username || '(无)'}, 密码=${options.password ? '已设置' : '(无)'}`)
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl
   }
 
   private getFullUrl(path?: string) {
@@ -76,16 +83,29 @@ export class WebDAVClient {
     const headers: Record<string, string> = { ...(opts.headers || {}) }
     if (this.authHeader) headers.Authorization = this.authHeader
     const url = this.getFullUrl(fixPath(path))
-    const res = await fetch(url, { method: method as never, headers, body: opts.body })
-    const status = res.status
-    const text = await res.text()
-    if (status > 299) throw new Error(`${status} [${url}]`)
-    return { status, text }
+    const start = Date.now()
+    try {
+      const res = await fetch(url, { method: method as never, headers, body: opts.body })
+      const status = res.status
+      const text = await res.text()
+      const cost = Date.now() - start
+      if (status > 299) {
+        log('warn', `${method} ${url} → ${status} (${cost}ms)`)
+        throw new Error(`${status} [${url}]`)
+      }
+      log('info', `${method} ${url} → ${status} (${cost}ms)${method == 'PUT' ? ` [${opts.body?.length ?? 0} 字节]` : ''}`)
+      return { status, text }
+    } catch (err) {
+      logError(`${method} ${url} 请求失败`, err)
+      throw err
+    }
   }
 
   async ls(path = '/'): Promise<WebDAVItem[]> {
     const res = await this.request('PROPFIND', path, { headers: { Depth: '1' } })
-    return parsePropfind(res.text)
+    const items = parsePropfind(res.text)
+    log('info', `PROPFIND ${path} 解析到 ${items.length} 个条目: ${items.map((i) => i.name + (i.isDir ? '/' : '')).join(', ') || '(空)'}`)
+    return items
   }
 
   async rm(path: string) {
