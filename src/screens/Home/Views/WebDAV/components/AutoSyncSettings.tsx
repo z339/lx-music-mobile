@@ -1,7 +1,7 @@
 import { memo, useCallback, useState } from 'react'
 import { View, TouchableOpacity } from 'react-native'
 
-import CheckBoxItem from '../../components/CheckBoxItem'
+import CheckBoxItem from '../../Setting/components/CheckBoxItem'
 import Text from '@/components/common/Text'
 import { useI18n } from '@/lang'
 import type { Message } from '@/lang'

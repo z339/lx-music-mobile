@@ -83,7 +83,8 @@ export const removeComponentId = (name: string) => {
 export const setNavActiveId = (id: Parameters<typeof commonActions.setNavActiveId>['0']) => {
   if (id == commonState.navActiveId) return
   commonActions.setNavActiveId(id)
-  if (id != 'nav_setting') {
+  // 设置页与 WebDAV 页为「功能页」，不记录为上一个页面（返回时回到之前的浏览页）
+  if (id != 'nav_setting' && id != 'nav_webdav') {
     commonActions.setLastNavActiveId(id)
     saveViewPrevState({ id })
   }

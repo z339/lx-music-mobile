@@ -81,6 +81,7 @@ const defaultSetting: LX.AppSetting = {
   'sync.webdav.lastSyncTime': 0,
   'sync.webdav.debugEnable': false,
   'sync.webdav.interval': 0,
+  'sync.webdav.syncUserApi': true,
 
   // 'theme.id': 'blue_plus',
   'theme.id': 'green',

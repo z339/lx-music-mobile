@@ -3,7 +3,7 @@ import { setSyncStatus, setSyncMessage, selectSyncMode } from '@/core/sync'
 import { updateSetting } from '@/core/common'
 import { WebDAV } from './webdav'
 import { initDeviceId } from './shared'
-import { runSync, runSyncList, runSyncDislike } from './modules'
+import { runSync, runSyncList, runSyncDislike, runSyncUserApi } from './modules'
 import type { WebDAVConfig } from './types'
 import { log, logError } from './logger'
 
@@ -19,7 +19,7 @@ export interface SyncResult {
   tasks: SyncTask[]
 }
 
-export type SyncTask = 'list' | 'dislike'
+export type SyncTask = 'list' | 'dislike' | 'userapi'
 
 /** 要同步的内容选项 */
 export interface SyncContentOptions {
@@ -27,6 +27,8 @@ export interface SyncContentOptions {
   list: boolean
   /** 同步「不喜欢」规则 */
   dislike: boolean
+  /** 同步音源（自定义源） */
+  userApi: boolean
 }
 
 export const getWebDavConfig = (): WebDAVConfig => {
@@ -44,6 +46,7 @@ export const getSyncOptions = (): SyncContentOptions => {
   return {
     list: s['sync.webdav.syncList'],
     dislike: s['sync.webdav.syncDislike'],
+    userApi: s['sync.webdav.syncUserApi'],
   }
 }
 
@@ -64,13 +67,16 @@ export const testConnection = async (config: WebDAVConfig): Promise<Error | null
  */
 export const syncNow = async (options?: Partial<SyncContentOptions>): Promise<SyncResult> => {
   const config = getWebDavConfig()
+  const defaults = getSyncOptions()
   const opts: SyncContentOptions = {
-    list: options?.list ?? getSyncOptions().list,
-    dislike: options?.dislike ?? getSyncOptions().dislike,
+    list: options?.list ?? defaults.list,
+    dislike: options?.dislike ?? defaults.dislike,
+    userApi: options?.userApi ?? defaults.userApi,
   }
   const tasks: SyncTask[] = []
   if (opts.list) tasks.push('list')
   if (opts.dislike) tasks.push('dislike')
+  if (opts.userApi) tasks.push('userapi')
 
   const fail = (error: string): SyncResult => {
     setSyncStatus({ status: false, message: error })
@@ -130,6 +136,12 @@ export const syncNow = async (options?: Partial<SyncContentOptions>): Promise<Sy
       }
 
       // 按用户选项只执行需要的任务
+      if (tasks.length === 1 && tasks[0] == 'userapi') {
+        // 音源同步无需选择合并方式
+        runSyncUserApi(webDAV).then(() => onEnd()).catch((err2: Error) => onEnd(err2))
+        return
+      }
+
       if (tasks.length === 1) {
         const task = tasks[0]
         const getMode = task === 'list'
@@ -152,6 +164,7 @@ export const syncNow = async (options?: Partial<SyncContentOptions>): Promise<Sy
 
       runSync(webDAV, {
         onEnd,
+        syncUserApi: opts.userApi,
         getListMergeMode: () => selectSyncMode(config.url, 'list') as Promise<LX.Sync.List.SyncMode>,
         getDislikeMergeMode: () => selectSyncMode(config.url, 'dislike') as Promise<LX.Sync.Dislike.SyncMode>,
       })

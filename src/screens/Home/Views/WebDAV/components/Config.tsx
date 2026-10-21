@@ -1,10 +1,9 @@
 import { memo, useCallback, useState } from 'react'
 import { View } from 'react-native'
 
-import InputItem from '../../components/InputItem'
-import Button from '../../components/Button'
-import CheckBoxItem from '../../components/CheckBoxItem'
-import DebugLogs from './DebugLogs'
+import InputItem from '../../Setting/components/InputItem'
+import Button from '../../Setting/components/Button'
+import CheckBoxItem from '../../Setting/components/CheckBoxItem'
 import AutoSyncSettings from './AutoSyncSettings'
 import Text from '@/components/common/Text'
 import Loading from '@/components/common/Loading'
@@ -28,8 +27,9 @@ const WebDavConfig = memo(() => {
   const path = useSettingValue('sync.webdav.path')
   const syncList = useSettingValue('sync.webdav.syncList')
   const syncDislike = useSettingValue('sync.webdav.syncDislike')
-  const lastSyncTime = useSettingValue('sync.webdav.lastSyncTime')
+  const syncUserApi = useSettingValue('sync.webdav.syncUserApi')
   const debugEnable = useSettingValue('sync.webdav.debugEnable')
+  const lastSyncTime = useSettingValue('sync.webdav.lastSyncTime')
 
   // 当前正在执行的动作（用于按钮 loading 与禁用）
   const [action, setAction] = useState<ActionType>(null)
@@ -87,7 +87,7 @@ const WebDavConfig = memo(() => {
       await tipDialog({ title: t('setting_sync_webdav_sync_now'), message: t('setting_sync_webdav_url_empty') })
       return
     }
-    if (!syncList && !syncDislike) {
+    if (!syncList && !syncDislike && !syncUserApi) {
       await tipDialog({ title: t('setting_sync_webdav_sync_now'), message: t('setting_sync_webdav_no_task') })
       return
     }
@@ -112,7 +112,7 @@ const WebDavConfig = memo(() => {
     } finally {
       setAction(null)
     }
-  }, [action, url, syncList, syncDislike, t])
+  }, [action, url, syncList, syncDislike, syncUserApi, t])
 
   const lastSyncText = (() => {
     if (!lastSyncTime) return t('setting_sync_webdav_never_synced')
@@ -170,14 +170,16 @@ const WebDavConfig = memo(() => {
           onChange={(v) => { updateSetting({ 'sync.webdav.syncDislike': v }) }}
           label={t('setting_sync_webdav_sync_dislike')} />
         <CheckBoxItem
+          check={syncUserApi}
+          onChange={(v) => { updateSetting({ 'sync.webdav.syncUserApi': v }) }}
+          label={t('setting_sync_webdav_sync_user_api')} />
+        <CheckBoxItem
           check={debugEnable}
           onChange={(v) => { updateSetting({ 'sync.webdav.debugEnable': v }) }}
           label={t('setting_sync_webdav_debug_enable')} />
       </View>
 
       <AutoSyncSettings />
-
-      {debugEnable ? <DebugLogs /> : null}
 
       <Text style={styles.lastSync} size={13} color={theme['c-font-label']}>
         {t('setting_sync_webdav_last_sync_time', { time: lastSyncText })}

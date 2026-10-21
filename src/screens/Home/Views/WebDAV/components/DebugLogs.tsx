@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { View, ScrollView, TouchableOpacity } from 'react-native'
 
 import Text from '@/components/common/Text'
-import Button from '../../components/Button'
+import Button from '../../Setting/components/Button'
 import { useI18n } from '@/lang'
 import { useTheme } from '@/store/theme/hook'
 import { createStyle, toast, tipDialog, clipboardWriteText } from '@/utils/tools'

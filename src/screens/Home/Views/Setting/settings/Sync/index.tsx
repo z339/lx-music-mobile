@@ -3,11 +3,10 @@ import { View, TouchableOpacity } from 'react-native'
 
 import Section from '../../components/Section'
 import IsEnable from './IsEnable'
-import WebDavConfig from './WebDavConfig'
 import History from './History'
 import { useI18n } from '@/lang'
 import { useSettingValue } from '@/store/setting/hook'
-import { updateSetting } from '@/core/common'
+import { updateSetting, setNavActiveId } from '@/core/common'
 import { createStyle } from '@/utils/tools'
 import Text from '@/components/common/Text'
 import { useTheme } from '@/store/theme/hook'
@@ -33,14 +32,19 @@ const SyncTypeButton = memo(({ active, label, onPress }: {
 
 export default memo(() => {
   const t = useI18n()
+  const theme = useTheme()
   const syncType = useSettingValue('sync.type')
   const [host, setHost] = useState('')
 
   const handleTypeChange = (type: SyncType) => {
+    // WebDAV 已有独立的抽屉入口，这里直接跳转过去，避免功能分散两处
+    if (type == 'webdav') {
+      updateSetting({ 'sync.type': 'webdav', 'sync.enable': false })
+      setNavActiveId('nav_webdav')
+      return
+    }
     if (type == syncType) return
     updateSetting({ 'sync.type': type })
-    // 切换到 WebDAV 时关闭局域网同步，避免两种同步同时连接
-    if (type == 'webdav') updateSetting({ 'sync.enable': false })
   }
 
   return (
@@ -53,10 +57,21 @@ export default memo(() => {
         </View>
       </View>
 
-      {syncType == 'server'
-        ? <IsEnable host={host} setHost={setHost} />
-        : <WebDavConfig />}
-      {syncType == 'server' && <History setHost={setHost} />}
+      {syncType == 'server' && (
+        <>
+          <IsEnable host={host} setHost={setHost} />
+          <History setHost={setHost} />
+        </>
+      )}
+      {syncType == 'webdav' && (
+        <TouchableOpacity
+          style={styles.gotoWebDav}
+          activeOpacity={0.6}
+          onPress={() => { setNavActiveId('nav_webdav') }}
+        >
+          <Text size={13} color={theme['c-font-label']}>{t('setting_sync_webdav_goto')}</Text>
+        </TouchableOpacity>
+      )}
     </Section>
   )
 })
@@ -89,5 +104,9 @@ const styles = createStyle({
   },
   typeBtnTextActive: {
     fontWeight: 'bold',
+  },
+  gotoWebDav: {
+    marginLeft: 25,
+    marginTop: 12,
   },
 })

@@ -23,7 +23,8 @@ export class SnapshotDataManage<T> {
 
   constructor(
     private readonly options: Options<T>,
-    private readonly getMD5: (data: T) => string,
+    // 支持同步或异步计算指纹（音源数据需先异步读取，故允许返回 Promise）
+    private readonly getMD5: (data: T) => string | Promise<string>,
   ) {}
 
   init = async (snapshotInfo?: SnapshotInfo | null) => {
@@ -59,7 +60,7 @@ export class SnapshotDataManage<T> {
 
   saveSnapshotData = async (deviceId: string, data: T): Promise<void> => {
     await this.init()
-    const md5 = this.getMD5(data)
+    const md5 = await this.getMD5(data)
     log('info', `保存快照: key=${md5}，设备=${deviceId}`)
     this.snapshotInfo.latest = md5
     this.snapshotInfo.clients[deviceId] = { snapshotKey: md5, lastSyncTime: Date.now() }

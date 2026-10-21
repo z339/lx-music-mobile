@@ -105,6 +105,7 @@ export const NAV_MENUS = [
   { id: 'nav_love', icon: 'love' },
   // { id: 'download', icon: 'download-2' },
   { id: 'nav_setting', icon: 'setting' },
+  { id: 'nav_webdav', icon: 'available_updates' },
 ] as const
 
 export type NAV_ID_Type = typeof NAV_MENUS[number]['id']

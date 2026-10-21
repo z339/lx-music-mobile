@@ -405,6 +405,11 @@ declare global {
        * WebDAV 同步 - 自动同步间隔（0=关闭，其余为毫秒数，见 SYNC_INTERVALS）
        */
       'sync.webdav.interval': number
+
+      /**
+       * WebDAV 同步 - 是否同步音源（自定义源）
+       */
+      'sync.webdav.syncUserApi': boolean
     }
   }
 }
