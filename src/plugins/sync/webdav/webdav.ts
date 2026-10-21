@@ -137,24 +137,63 @@ export class WebDAV {
     }
   }
 
+  /**
+   * 拼接远程路径，避免出现双斜杠导致服务器返回 400
+   * （实测用户把 path 填成 `/lx/` 或留空时，原拼接会产生 `//list`）。
+   */
+  private join(...segments: string[]): string {
+    return segments
+      .map((s) => s.replace(/^\/+|\/+$/g, ''))
+      .filter((s) => s.length)
+      .join('/')
+  }
+
   async put(path: string, data: string) {
-    return this.client.put(`${this.path}/${path}`, data)
+    const p = this.join(this.path, path)
+    return this.client.put(p ? `/${p}` : '/', data)
   }
 
   async rm(path: string) {
-    return this.client.rm(`${this.path}/${path}`)
+    const p = this.join(this.path, path)
+    return this.client.rm(p ? `/${p}` : '/')
   }
 
   async get(path: string): Promise<string> {
-    return this.client.get(`${this.path}/${path}`)
+    const p = this.join(this.path, path)
+    return this.client.get(p ? `/${p}` : '/')
   }
 
   async ls(path?: string): Promise<WebDAVItem[]> {
-    return this.client.ls(path ? `${this.path}/${path}` : this.path)
+    const p = this.join(this.path, path ?? '')
+    return this.client.ls(p ? `/${p}` : '/')
   }
 
+  /**
+   * 创建目录（自动逐级创建所有缺失的父目录）。
+   *
+   * WebDAV 规范中 MKCOL 要求父目录必须已存在，否则返回 409 Conflict
+   * （已实测坚果云 dav.jianguoyun.com：MKCOL /lx/a/b/c → 409）。
+   * 用户填写的 path 本身也可能尚不存在，因此这里从根开始逐级探测并创建。
+   */
   async mkdir(path: string) {
-    return this.client.mkdir(`${this.path}/${path}`)
+    // 需要创建的层级 = 用户配置的 path + 传入的相对路径
+    const segments = [...this.path.split('/'), ...path.split('/')].filter((s) => s && s !== '.')
+    if (!segments.length) return
+    let current = ''
+    for (const segment of segments) {
+      current += `/${segment}`
+      try {
+        // 已存在则跳过（避免重复 MKCOL 产生 405）
+        await this.client.ls(current)
+        log('info', `目录已存在，跳过: ${current}`)
+        continue
+      } catch (err) {
+        // 仅 404 视为「不存在需创建」，其余（如 401/403）应直接抛出
+        if (!is404Error(err)) throw err
+      }
+      await this.client.mkdir(current)
+      log('info', `创建目录: ${current}`)
+    }
   }
 }
 
