@@ -5,6 +5,7 @@ import InputItem from '../../components/InputItem'
 import Button from '../../components/Button'
 import CheckBoxItem from '../../components/CheckBoxItem'
 import DebugLogs from './DebugLogs'
+import AutoSyncSettings from './AutoSyncSettings'
 import Text from '@/components/common/Text'
 import Loading from '@/components/common/Loading'
 import { useI18n } from '@/lang'
@@ -173,6 +174,8 @@ const WebDavConfig = memo(() => {
           onChange={(v) => { updateSetting({ 'sync.webdav.debugEnable': v }) }}
           label={t('setting_sync_webdav_debug_enable')} />
       </View>
+
+      <AutoSyncSettings />
 
       {debugEnable ? <DebugLogs /> : null}
 

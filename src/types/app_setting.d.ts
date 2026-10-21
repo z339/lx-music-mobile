@@ -400,6 +400,11 @@ declare global {
        * WebDAV 同步 - 是否开启调试日志
        */
       'sync.webdav.debugEnable': boolean
+
+      /**
+       * WebDAV 同步 - 自动同步间隔（0=关闭，其余为毫秒数，见 SYNC_INTERVALS）
+       */
+      'sync.webdav.interval': number
     }
   }
 }
