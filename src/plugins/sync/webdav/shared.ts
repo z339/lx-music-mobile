@@ -1,7 +1,7 @@
 import { getData, saveData } from '@/plugins/storage'
 import { stringMd5 } from 'react-native-quick-md5'
-import { byteArrayFromBase64, utf8FromByteArray } from 'react-native-quick-base64'
-import { inflate } from 'pako'
+import { toByteArray, fromByteArray } from 'react-native-quick-base64'
+import { gzip, ungzip } from 'pako'
 
 export const CANCELED_ERROR_MSG = 'Canceled'
 
@@ -15,19 +15,30 @@ export const CONSTANTS = {
   lockFilePrefix: 'lock-',
 } as const
 
-// 编码：移动端直接以纯 JSON 写入（避免 RN fetch 发送二进制 gzip 体的兼容性问题）。
-export const encodeData = async (data: string): Promise<string> => data
+// 与 any-listen 一致：小于该阈值的内容不压缩，直接以明文 JSON 存储
+const COMPRESS_THRESHOLD = 1024
 
-// 解码 any-listen 桌面端写入的 `cg_`(gzip+base64) 数据；移动端自身只写纯 JSON，
-// 故读取时兼容两种形式：以 `cg_` 开头则解压，否则原样返回。
-const unGZipString = (data: string): string => {
-  const bytes = byteArrayFromBase64(data)
-  const out = inflate(bytes)
-  return utf8FromByteArray(out)
+/**
+ * 编码：与 any-listen 桌面端保持一致。
+ * 超过 COMPRESS_THRESHOLD 时用 gzip 压缩并以 `cg_` 前缀 + base64 存储，
+ * 否则原样返回明文 JSON。这样两端写出的文件能被对方正确解析。
+ */
+export const encodeData = (data: string): string => {
+  if (data.length <= COMPRESS_THRESHOLD) return data
+  const compressed = gzip(data)
+  if (compressed.length >= data.length) return data
+  return `cg_${fromByteArray(compressed)}`
 }
 
+/**
+ * 解码：兼容 any-listen 桌面端写入的 `cg_`(gzip+base64) 数据与明文 JSON 两种形式。
+ * 桌面端使用 zlib.gzip，故这里必须用 ungzip（gzip 容器），而非 inflate（裸 deflate）。
+ * pako 的 `to: 'string'` 会按 UTF-8 解码，与桌面端 buf.toString() 行为一致。
+ */
 export const decodeData = (data: string): string => {
-  return data.startsWith('cg_') ? unGZipString(data.replace('cg_', '')) : data
+  if (!data.startsWith('cg_')) return data
+  const bytes = toByteArray(data.slice(3))
+  return ungzip(bytes, { to: 'string' })
 }
 
 export const generateId = (): string => stringMd5(`${Date.now()}_${Math.random()}`).slice(0, 16)

@@ -39,12 +39,12 @@ const runListSync = async (
   options: Options<RemoteListDataFull>,
   getListMergeMode?: () => Promise<LX.Sync.List.SyncMode>,
 ) => {
+  const deviceId = getDeviceId()
   const snapshotInfo = await options.getSnapshotInfo()
   if (snapshotInfo?.latest) {
-    const deviceId = getDeviceId()
     const client = snapshotInfo.clients[deviceId]
     if (client?.snapshotKey) {
-      const localData = toRemoteListData(await getLocalListData(), deviceId)
+      const localData = toRemoteListData(await getLocalListData())
       const localKey = getListDataMD5(localData)
       if (localKey === snapshotInfo.latest) {
         if (localKey === client.snapshotKey) return
@@ -65,17 +65,18 @@ const runListSync = async (
         await sdm.saveSnapshotData(deviceId, latest)
         return
       }
-      const [latestData, snapshotData, localListData] =
-        snapshotInfo.latest == client.snapshotKey
-          ? await Promise.all([
-              options.getSnapshotData(snapshotInfo.latest),
-              getLocalListData().then((d) => toRemoteListData(d, deviceId)),
-            ]).then(([l]) => [l, l, l] as const)
-          : await Promise.all([
-              options.getSnapshotData(snapshotInfo.latest),
-              options.getSnapshotData(client.snapshotKey),
-              getLocalListData().then((d) => toRemoteListData(d, deviceId)),
-            ])
+      const localListData = toRemoteListData(await getLocalListData())
+      let latestData: RemoteListDataFull | null
+      let snapshotData: RemoteListDataFull | null
+      if (snapshotInfo.latest == client.snapshotKey) {
+        latestData = await options.getSnapshotData(snapshotInfo.latest)
+        snapshotData = latestData
+      } else {
+        ;[latestData, snapshotData] = await Promise.all([
+          options.getSnapshotData(snapshotInfo.latest),
+          options.getSnapshotData(client.snapshotKey),
+        ])
+      }
       if (!latestData || !snapshotData) throw new Error('Snapshot data not found')
       const newData = mergeFullDataFromSnapshot(
         localListData,
@@ -92,7 +93,7 @@ const runListSync = async (
     if (getListMergeMode) {
       const [latestData, localListData] = await Promise.all([
         options.getSnapshotData(snapshotInfo.latest),
-        getLocalListData().then((d) => toRemoteListData(d, deviceId)),
+        getLocalListData().then((d) => toRemoteListData(d)),
       ])
       if (!latestData) throw new Error('Snapshot data not found')
       const [merged, updateLocal] = await mergeFullData(
@@ -100,7 +101,7 @@ const runListSync = async (
         latestData,
         settingState.setting['list.addMusicLocationType'],
         getListMergeMode,
-        async () => toRemoteListData(await getLocalListData(), deviceId),
+        async () => toRemoteListData(await getLocalListData()),
       )
       if (updateLocal) await options.overwriteLocalList(merged)
       const sdm = new SnapshotDataManage(options, getListDataMD5)
@@ -110,7 +111,7 @@ const runListSync = async (
     }
     throw new Error('Local list data is different from the latest snapshot data, but no merge mode is provided')
   }
-  const localListData = toRemoteListData(await getLocalListData(), deviceId)
+  const localListData = toRemoteListData(await getLocalListData())
   const sdm = new SnapshotDataManage(options, getListDataMD5)
   await sdm.init(snapshotInfo)
   await sdm.saveSnapshotData(deviceId, localListData)
@@ -127,15 +128,15 @@ export const runSyncList = async (webDAV: WebDAV, getListMergeMode?: () => Promi
           if (!is404Error(error)) throw error
           await checkListDirs(webDAV)
         }
-        return file ? (JSON.parse(await decodeData(file)) as SnapshotInfo) : null
+        return file ? (JSON.parse(decodeData(file)) as SnapshotInfo) : null
       },
       async saveSnapshotInfo(info) {
-        await webDAV.put(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotInfoFileName}`, await encodeData(JSON.stringify(info)))
+        await webDAV.put(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotInfoFileName}`, encodeData(JSON.stringify(info)))
       },
       async getSnapshotList() {
         try {
           const file = await webDAV.get(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotListFileName}`)
-          const raw = await decodeData(file)
+          const raw = decodeData(file)
           return raw ? (JSON.parse(raw) as string[]) : []
         } catch (error) {
           if (!is404Error(error)) throw error
@@ -143,12 +144,12 @@ export const runSyncList = async (webDAV: WebDAV, getListMergeMode?: () => Promi
         }
       },
       async saveSnapshotList(list) {
-        await webDAV.put(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotListFileName}`, await encodeData(JSON.stringify(list)))
+        await webDAV.put(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotListFileName}`, encodeData(JSON.stringify(list)))
       },
       async getSnapshotData(key) {
         try {
           const file = await webDAV.get(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotDirectoryName}/${key}`)
-          return file == null ? null : (JSON.parse(await decodeData(file)) as RemoteListDataFull)
+          return file == null ? null : (JSON.parse(decodeData(file)) as RemoteListDataFull)
         } catch (error) {
           if (!is404Error(error)) throw error
           return null
@@ -162,7 +163,7 @@ export const runSyncList = async (webDAV: WebDAV, getListMergeMode?: () => Promi
           })
       },
       async saveSnapshotData(key, data) {
-        await webDAV.put(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotDirectoryName}/${key}`, await encodeData(JSON.stringify(data)))
+        await webDAV.put(`${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotDirectoryName}/${key}`, encodeData(JSON.stringify(data)))
       },
       async overwriteLocalList(data) {
         await setLocalListData(fromRemoteListData(data))
@@ -192,9 +193,9 @@ const runDislikeSync = async (
   options: Options<string>,
   getDislikeMergeMode?: () => Promise<LX.Sync.Dislike.SyncMode>,
 ) => {
+  const deviceId = getDeviceId()
   const snapshotInfo = await options.getSnapshotInfo()
   if (snapshotInfo?.latest) {
-    const deviceId = getDeviceId()
     const client = snapshotInfo.clients[deviceId]
     if (client?.snapshotKey) {
       const localKey = getDislikeRulesMD5(await getLocalDislikeData())
@@ -217,14 +218,18 @@ const runDislikeSync = async (
         await sdm.saveSnapshotData(deviceId, latest)
         return
       }
-      const [latestData, snapshotData, localData] =
-        snapshotInfo.latest == client.snapshotKey
-          ? await Promise.all([options.getSnapshotData(snapshotInfo.latest), getLocalDislikeData()]).then(([l]) => [l, l, l] as const)
-          : await Promise.all([
-              options.getSnapshotData(snapshotInfo.latest),
-              options.getSnapshotData(client.snapshotKey),
-              getLocalDislikeData(),
-            ])
+      const localData = await getLocalDislikeData()
+      let latestData: string | null
+      let snapshotData: string | null
+      if (snapshotInfo.latest == client.snapshotKey) {
+        latestData = await options.getSnapshotData(snapshotInfo.latest)
+        snapshotData = latestData
+      } else {
+        ;[latestData, snapshotData] = await Promise.all([
+          options.getSnapshotData(snapshotInfo.latest),
+          options.getSnapshotData(client.snapshotKey),
+        ])
+      }
       if (latestData == null || snapshotData == null) throw new Error('Snapshot data not found')
       const newData = mergeDislikeFullDataFromSnapshot(localData, latestData, snapshotData)
       await options.overwriteLocalList(newData)
@@ -270,15 +275,15 @@ export const runSyncDislike = async (webDAV: WebDAV, getDislikeMergeMode?: () =>
           if (!is404Error(error)) throw error
           await checkDislikeDirs(webDAV)
         }
-        return file ? (JSON.parse(await decodeData(file)) as SnapshotInfo) : null
+        return file ? (JSON.parse(decodeData(file)) as SnapshotInfo) : null
       },
       async saveSnapshotInfo(info) {
-        await webDAV.put(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotInfoFileName}`, await encodeData(JSON.stringify(info)))
+        await webDAV.put(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotInfoFileName}`, encodeData(JSON.stringify(info)))
       },
       async getSnapshotList() {
         try {
           const file = await webDAV.get(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotListFileName}`)
-          const raw = await decodeData(file)
+          const raw = decodeData(file)
           return raw ? (JSON.parse(raw) as string[]) : []
         } catch (error) {
           if (!is404Error(error)) throw error
@@ -286,7 +291,7 @@ export const runSyncDislike = async (webDAV: WebDAV, getDislikeMergeMode?: () =>
         }
       },
       async saveSnapshotList(list) {
-        await webDAV.put(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotListFileName}`, await encodeData(JSON.stringify(list)))
+        await webDAV.put(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotListFileName}`, encodeData(JSON.stringify(list)))
       },
       async getSnapshotData(key) {
         try {
@@ -305,7 +310,7 @@ export const runSyncDislike = async (webDAV: WebDAV, getDislikeMergeMode?: () =>
           })
       },
       async saveSnapshotData(key, data) {
-        await webDAV.put(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotDirectoryName}/${key}`, await encodeData(data))
+        await webDAV.put(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotDirectoryName}/${key}`, encodeData(data))
       },
       async overwriteLocalList(data) {
         await setLocalDislikeData(data)

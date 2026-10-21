@@ -89,8 +89,8 @@ const mergeUserList = <T extends RemoteListInfoFull>(
     list = mergeMusicList(sourceListData.list, targetListData.list, snapshotListData?.list ?? null, addMusicLocationType)
   } else {
     const sourceTime = sourceListData.meta.syncTime || 0
-    const targetTime = 'syncTime' in targetListData.meta ? targetListData.meta.syncTime : 0
-    const snapshotTime = snapshotListData && 'syncTime' in snapshotListData.meta ? snapshotListData.meta.syncTime : 0
+    const targetTime = ('syncTime' in targetListData.meta ? targetListData.meta.syncTime : 0) || 0
+    const snapshotTime = (snapshotListData && 'syncTime' in snapshotListData.meta ? snapshotListData.meta.syncTime : 0) || 0
     const max = Math.max(sourceTime, targetTime, snapshotTime)
     sourceListData.meta.syncTime = max
     if ('syncTime' in targetListData.meta) targetListData.meta.syncTime = max
@@ -147,7 +147,6 @@ export const mergeFullDataFromSnapshot = (
       addMusicLocationType,
     ),
     userList: [],
-    tempList: [],
   }
   const localUserListData = createUserListDataObj(localListData)
   const latestUserListData = createUserListDataObj(latestListData)
@@ -233,7 +232,6 @@ const mergeFullDataLocal = (source: ListData, target: ListData, addMusicLocation
     defaultList: mergeUserList(source.defaultList, target.defaultList, null, addMusicLocationType),
     loveList: mergeUserList(source.loveList, target.loveList, null, addMusicLocationType),
     userList: [],
-    tempList: [],
   }
   const sourceUserObj = createUserListDataObj(source)
   const targetUserObj = createUserListDataObj(target)
@@ -265,7 +263,6 @@ const overwriteListLocal = (source: ListData, target: ListData): ListData => {
     defaultList: source.defaultList,
     loveList: source.loveList,
     userList: [],
-    tempList: [],
   }
   const sourceUserObj = createUserListDataObj(source)
   newListData.userList = [...source.userList]
