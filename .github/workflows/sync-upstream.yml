@@ -4,7 +4,7 @@ name: Sync upstream master
 # master -> webdav 的合并不在此处做，由人工决定（本地 git merge origin/master）。
 on:
   schedule:
-    - cron: '17 1 * * *'      # 每天 09:17 (北京时间) 检查上游更新
+    - cron: '8 18 * * *'      # 每天 02:08 (北京时间) 检查上游更新 (UTC 18:08)
   workflow_dispatch:         # 允许在 Actions 页面手动触发
 
 permissions:
