@@ -28,6 +28,10 @@ const registerPlaybackService = async() => {
   if (isInitialized) return
 
   console.log('reg services...')
+  // 诊断：确认播放服务（headless task）与主界面是否在同一个 JS 运行时。
+  // 若不是同一个，global.app_event 会被注册成两个不同对象，
+  // 播放状态事件就永远传不到界面（表现为进度不动、状态卡在「音乐加载中」）。
+  console.log('[player] runtime marker =', (global as any).__lxRuntimeMarker ?? 'none')
   TrackPlayer.addEventListener(TPEvent.RemotePlay, () => {
     // console.log('remote-play')
     play()
@@ -77,6 +81,7 @@ const registerPlaybackService = async() => {
   })
 
   TrackPlayer.addEventListener(TPEvent.PlaybackState, async info => {
+    console.log('[player] state:', info.state, '| gettingUrlId:', global.lx.gettingUrlId, '| trackId:', global.lx.playerTrackId, '| isTemp:', isTempId())
     if (global.lx.gettingUrlId || isTempId()) return
     // let currentIsPlaying = false
 
@@ -113,6 +118,7 @@ const registerPlaybackService = async() => {
   TrackPlayer.addEventListener(TPEvent.PlaybackTrackChanged, async info => {
     // console.log('PlaybackTrackChanged====>', info)
     global.lx.playerTrackId = await getCurrentTrackId()
+    console.log('[player] track changed:', global.lx.playerTrackId, '| isTemp:', isTempId())
     if (info.track == null) return
     if (global.lx.isPlayedStop) return handleExitApp('Timeout Exit')
 

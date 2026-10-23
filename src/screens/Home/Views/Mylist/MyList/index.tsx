@@ -7,6 +7,8 @@ import ListImportExport, { type ListImportExportType } from './ListImportExport'
 import { handleRemove, handleSync } from './listAction'
 import ListMusicSort, { type ListMusicSortType } from './ListMusicSort'
 import DuplicateMusic, { type DuplicateMusicType } from './DuplicateMusic'
+import { getListMusics } from '@/core/list'
+import { handleCacheList } from '@/utils/offlineCacheAction'
 
 
 export default () => {
@@ -52,6 +54,7 @@ export default () => {
             onExport={(info, position) => listImportExportRef.current?.export(info, position)}
             onRemove={info => { handleRemove(info) }}
             onSync={info => { handleSync(info) }}
+            onCacheList={info => { void getListMusics(info.id).then(list => handleCacheList(list, info.id)) }}
             onSelectLocalFile={(info, position) => listImportExportRef.current?.selectFile(info, position)}
           />
           {/* <ImportExport actionType={actionType} visible={isShowChoosePath} hide={() => setShowChoosePath(false)} selectedListRef={selectedListRef} /> */}

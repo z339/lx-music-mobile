@@ -1,5 +1,6 @@
 import { isInitialized, initial as playerInitial, isEmpty, setPause, setPlay, setResource, setStop, initTrackInfo } from '@/plugins/player'
 import {
+  setIsPlay,
   setStatusText,
 } from '@/core/player/playStatus'
 import playerState from '@/store/player/state'
@@ -20,6 +21,7 @@ import {
   removeTempPlayList,
 } from '@/core/player/tempPlayList'
 import { getMusicUrl, getPicPath, getLyricInfo } from '@/core/music'
+import { autoCollectOnPlay } from '@/core/music/offlineCache'
 import { requestMsg } from '@/utils/message'
 import { getRandom } from '@/utils/common'
 import { filterList } from './utils'
@@ -132,24 +134,58 @@ const getMusicPlayUrl = async(musicInfo: LX.Music.MusicInfo | LX.Download.ListIt
   })
 }
 
+/**
+ * 播放失败时给用户可读的提示：
+ *   - 没有可用音源（未选择 / 已被删除）→ 提示前往设置选择音源；
+ *   - 音源脚本初始化失败 → 提示检查脚本或切换其它音源；
+ *   - 其它错误 → 显示原始错误信息。
+ * 避免界面一直停留在「歌曲链接获取中」而看不出到底发生了什么。
+ */
+const getPlayUrlErrorText = (err: any): string => {
+  const message = typeof err?.message == 'string' ? err.message : ''
+  if (!settingState.setting['common.apiSource'] || message == 'Api is not found') {
+    return global.i18n.t('player__no_api_source')
+  }
+  if (message == 'source init failed') return global.i18n.t('player__api_init_failed')
+  return message || global.i18n.t('player__getting_url_failed')
+}
+
 export const setMusicUrl = (musicInfo: LX.Music.MusicInfo | LX.Download.ListItem, isRefresh?: boolean) => {
   // addLoadTimeout()
   if (!diffCurrentMusicInfo(musicInfo)) return
   if (cancelDelayRetry) cancelDelayRetry()
-  global.lx.gettingUrlId = createGettingUrlId(musicInfo)
+  const gettingUrlId = createGettingUrlId(musicInfo)
+  global.lx.gettingUrlId = gettingUrlId
   void getMusicPlayUrl(musicInfo, isRefresh).then((url) => {
     if (!url) return
+    // 在线歌曲开始播放时，后台自动收集为离线缓存（听完整首即离线可用）
+    if (/^https?:\/\//.test(url) && !('progress' in musicInfo) && musicInfo.source != 'local') {
+      void autoCollectOnPlay(musicInfo, url)
+    }
+    // 播放链接已拿到，接下来是音频加载阶段。
+    // 播放器不一定触发 loadstart 事件（如音源返回的链接不可用），
+    // 这里先把状态改成「音乐加载中」，避免界面一直停在「歌曲链接获取中」造成误判。
+    setStatusText(global.i18n.t('player__loading'))
     setResource(musicInfo, url, playerState.progress.nowPlayTime)
+    // 播放已下发：立刻把 App 侧状态置为「播放中」。
+    // 部分机型上 ExoPlayer 的 isPlaying() 恒为 false（音频其实已在播放，
+    // AudioTrack 已 started），若只依赖播放器的 playing 事件，
+    // 界面会一直停在「音乐加载中」、进度不动。
+    // 真正失败时错误处理会再把状态改回来。
+    setIsPlay(true)
+    setStatusText('')
   }).catch((err: any) => {
     console.log(err)
-    setStatusText(err.message as string)
+    setStatusText(getPlayUrlErrorText(err))
     global.app_event.error()
     addDelayNextTimeout()
   }).finally(() => {
-    if (musicInfo === playerState.playMusicInfo.musicInfo) {
-      global.lx.gettingUrlId = ''
-      clearLoadTimeout()
-    }
+    // 必须清空 gettingUrlId：播放状态事件（plugins/player/service.ts）会据此
+    // 忽略「取链中」的状态，若这里没清掉（原先用对象引用比较，引用一旦不同就永远清不掉），
+    // 后续所有播放状态事件都会被丢弃，表现为「点了歌一直显示音乐加载中、进度不动」。
+    // 只有当期间没有新的取链任务时才会清除，避免误清正在进行的取链。
+    if (global.lx.gettingUrlId == gettingUrlId) global.lx.gettingUrlId = ''
+    clearLoadTimeout()
   })
 }
 

@@ -17,6 +17,7 @@ import {
   getPicUrl as getLocalPicUrl,
   getLyricInfo as getLocalLyricInfo,
 } from './local'
+import { getCacheFilePath } from './offlineCache'
 
 
 export const getMusicUrl = async({
@@ -37,6 +38,9 @@ export const getMusicUrl = async({
   } else if (musicInfo.source == 'local') {
     return getLocalMusicUrl({ musicInfo, isRefresh, onToggleSource, allowToggleSource })
   } else {
+    // 优先返回离线缓存文件（断网也能播放），与现有流式缓冲缓存互不干扰
+    const cached = await getCacheFilePath(musicInfo)
+    if (cached) return cached
     return getOnlineMusicUrl({ musicInfo, isRefresh, quality, onToggleSource, allowToggleSource })
   }
 }

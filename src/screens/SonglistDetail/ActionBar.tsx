@@ -11,12 +11,15 @@ import { handleCollect, handlePlay } from './listAction'
 import songlistState from '@/store/songlist/state'
 import { useI18n } from '@/lang'
 import { useListInfo } from './state'
+import { handleCacheList } from '@/utils/offlineCacheAction'
+import { useSettingValue } from '@/store/setting/hook'
 // import { NAV_SHEAR_NATIVE_IDS } from '@/config/constant'
 
 export default memo(() => {
   const theme = useTheme()
   const t = useI18n()
   const info = useListInfo()
+  const isEnableOfflineCache = useSettingValue('common.isEnableOfflineCache')
 
   const back = () => {
     void pop(commonState.componentIds.songlistDetail!)
@@ -32,6 +35,10 @@ export default memo(() => {
     void handleCollect(info.id, info.source, songlistState.listDetailInfo.info.name || info.name)
   }
 
+  const handleCacheListAll = () => {
+    void handleCacheList(songlistState.listDetailInfo.list, info.id)
+  }
+
   return (
     <View style={styles.container}>
       <Button onPress={handleCollection} style={styles.controlBtn}>
@@ -40,6 +47,11 @@ export default memo(() => {
       <Button onPress={handlePlayAll} style={styles.controlBtn}>
         <Text style={{ ...styles.controlBtnText, color: theme['c-button-font'] }}>{t('play_all')}</Text>
       </Button>
+      { isEnableOfflineCache
+        ? <Button onPress={handleCacheListAll} style={styles.controlBtn}>
+            <Text style={{ ...styles.controlBtnText, color: theme['c-button-font'] }}>{t('offline_cache_cache_list')}</Text>
+          </Button>
+        : null }
       <Button onPress={back} style={styles.controlBtn}>
         <Text style={{ ...styles.controlBtnText, color: theme['c-button-font'] }}>{t('back')}</Text>
       </Button>

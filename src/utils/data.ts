@@ -514,6 +514,25 @@ export const getUserApiList = async(): Promise<LX.UserApi.UserApiInfo[]> => {
       updated = true
     }
   }
+
+  // 迁移：旧版本 WebDAV 同步写下的音源 id 缺少 user_api_ 前缀（如「野花v1」），
+  // 这会导致 setApiSource 不把它当作自定义源加载而一直「换源失败」。
+  // 这里统一补全前缀，并把脚本从旧 key 迁移到新 key。
+  const USER_API_ID_PREFIX = 'user_api_'
+  for (const info of userApis) {
+    if (!info.id.startsWith(USER_API_ID_PREFIX)) {
+      const oldKey = `${userApiPrefix}${info.id}`
+      const newId = `${USER_API_ID_PREFIX}${info.id}`
+      const script = await getData<string>(oldKey)
+      if (script != null) {
+        await saveData(`${userApiPrefix}${newId}`, script)
+        await removeData(oldKey)
+      }
+      info.id = newId
+      updated = true
+    }
+  }
+
   if (updated) void saveData(userApiPrefix, userApis)
 
   return [...userApis]
@@ -551,6 +570,9 @@ const matchInfo = (scriptInfo: string) => {
 
   return infos as Record<keyof typeof INFO_NAMES, string>
 }
+/** 供 WebDAV 同步复用：从脚本头部注释块解析出权威元信息（name/version/author 等），
+ *  确保同步写回的 UserApiInfo 与本地 addUserApi 导入时完全一致，避免出现空 version 等导致脚本 init 失败。 */
+export const parseUserApiScriptInfo = matchInfo
 export const addUserApi = async(script: string): Promise<LX.UserApi.UserApiInfo> => {
   const result = /^\/\*[\S|\s]+?\*\//.exec(script)
   if (!result) throw new Error(global.i18n.t('user_api_add_failed_tip'))

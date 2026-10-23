@@ -77,6 +77,11 @@ declare global {
       'common.alwaysKeepStatusbarHeight': boolean
 
       /**
+       * 是否启用离线缓存功能（关闭后不自动收集、不读取缓存，纯在线播放，避免影响原音乐播放）
+       */
+      'common.isEnableOfflineCache': boolean
+
+      /**
        * 主题id
        */
       'theme.id': string

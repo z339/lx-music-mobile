@@ -135,4 +135,5 @@ export default () => {
   global.app_event.on('playerEmptied', handleEmpied)
   global.app_event.on('playerError', handleError)
   global.app_event.on('musicToggled', handleSetPlayInfo)
+  console.log('[lx] player event listeners registered, runtime marker =', (global as any).__lxRuntimeMarker)
 }

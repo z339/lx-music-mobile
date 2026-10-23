@@ -3,6 +3,8 @@ import { useI18n } from '@/lang'
 import Menu, { type Menus, type MenuType, type Position } from '@/components/common/Menu'
 import { hasDislike } from '@/core/dislikeList'
 import { hasMusicUrlByMusic } from '@/utils/data'
+import { isCached } from '@/core/music/offlineCache'
+import { useSettingValue } from '@/store/setting/hook'
 
 export interface SelectInfo {
   musicInfo: LX.Music.MusicInfoOnline
@@ -22,6 +24,8 @@ export interface ListMenuProps {
   onCopyName: (selectInfo: SelectInfo) => void
   onMusicSourceDetail: (selectInfo: SelectInfo) => void
   onRemoveCache: (selectInfo: SelectInfo) => void
+  onCacheSong: (selectInfo: SelectInfo) => void
+  onRemoveOfflineCache: (selectInfo: SelectInfo) => void
   onDislikeMusic: (selectInfo: SelectInfo) => void
 }
 export interface ListMenuType {
@@ -34,6 +38,7 @@ export type {
 
 export default forwardRef<ListMenuType, ListMenuProps>((props: ListMenuProps, ref) => {
   const t = useI18n()
+  const isEnableOfflineCache = useSettingValue('common.isEnableOfflineCache')
   const [visible, setVisible] = useState(false)
   const menuRef = useRef<MenuType>(null)
   const selectInfoRef = useRef<SelectInfo>(initSelectInfo as SelectInfo)
@@ -55,22 +60,31 @@ export default forwardRef<ListMenuType, ListMenuProps>((props: ListMenuProps, re
 
   const handleSetMenu = (musicInfo: LX.Music.MusicInfo) => {
     let has_url_cache = false
-    const menu = [
+    let is_offline_cached = false
+    const menu: Menus = [
       { action: 'play', label: t('play') },
       { action: 'playLater', label: t('play_later') },
       // { action: 'download', label: '下载' },
       { action: 'add', label: t('add_to') },
+      ...(isEnableOfflineCache ? [{ action: 'cacheSong' as const, label: t('offline_cache_cache_song') }] : []),
       { action: 'copyName', label: t('copy_name') },
       { action: 'musicSourceDetail', label: t('music_source_detail') },
       { action: 'removeCache', disabled: !has_url_cache, label: t('list_remove_cache') },
+      ...(isEnableOfflineCache ? [{ action: 'removeOfflineCache' as const, disabled: !is_offline_cached, label: t('offline_cache_remove_cache') }] : []),
       { action: 'dislike', label: t('dislike'), disabled: hasDislike(musicInfo) },
     ]
     setMenus(menu)
-    void hasUrlCache(musicInfo).then((_has_url_cache) => {
+    void Promise.all([hasUrlCache(musicInfo), isCached(musicInfo)]).then(([_has_url_cache, _is_offline_cached]) => {
       let isUpdated = false
       if (has_url_cache != _has_url_cache) {
         has_url_cache = _has_url_cache
         menu[menu.findIndex(m => m.action == 'removeCache')].disabled = !has_url_cache
+        isUpdated ||= true
+      }
+      const offlineIdx = menu.findIndex(m => m.action == 'removeOfflineCache')
+      if (offlineIdx >= 0 && is_offline_cached != _is_offline_cached) {
+        is_offline_cached = _is_offline_cached
+        menu[offlineIdx].disabled = !is_offline_cached
         isUpdated ||= true
       }
 
@@ -99,6 +113,12 @@ export default forwardRef<ListMenuType, ListMenuProps>((props: ListMenuProps, re
         break
       case 'removeCache':
         props.onRemoveCache(selectInfo)
+        break
+      case 'cacheSong':
+        props.onCacheSong(selectInfo)
+        break
+      case 'removeOfflineCache':
+        props.onRemoveOfflineCache(selectInfo)
         break
       case 'dislike':
         props.onDislikeMusic(selectInfo)

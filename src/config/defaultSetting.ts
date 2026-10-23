@@ -14,6 +14,7 @@ const defaultSetting: LX.AppSetting = {
   'common.showExitBtn': true,
   'common.useSystemFileSelector': true,
   'common.alwaysKeepStatusbarHeight': false,
+  'common.isEnableOfflineCache': true,
 
   'player.startupAutoPlay': false,
   'player.startupPushPlayDetailScreen': false,

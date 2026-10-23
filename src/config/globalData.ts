@@ -77,3 +77,9 @@ global.app_event = createAppEventHub()
 global.list_event = createListEventHub()
 global.dislike_event = createDislikeEventHub()
 global.state_event = createStateEventHub()
+
+// 诊断：给每个 JS 运行时打一个唯一标记。
+// 播放服务通过 headless task 注册（Android 上可能跑在独立的 JS 运行时里），
+// 若标记不同，说明 global.app_event 是两个不同对象，播放状态事件无法传到界面。
+;(global as any).__lxRuntimeMarker = Math.random().toString(36).slice(2, 10)
+console.log('[lx] runtime marker =', (global as any).__lxRuntimeMarker)

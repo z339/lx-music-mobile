@@ -5,6 +5,7 @@ import { LIST_IDS } from '@/config/constant'
 import musicSdk from '@/utils/musicSdk'
 import { scaleSizeW } from '@/utils/pixelRatio'
 import listState from '@/store/list/state'
+import { useSettingValue } from '@/store/setting/hook'
 
 export interface SelectInfo {
   listInfo: LX.List.MyListInfo
@@ -28,6 +29,7 @@ export interface ListMenuProps {
   onSync: (listInfo: LX.List.UserListInfo) => void
   onSelectLocalFile: (listInfo: LX.List.MyListInfo, index: number) => void
   onRemove: (listInfo: LX.List.UserListInfo) => void
+  onCacheList: (listInfo: LX.List.MyListInfo) => void
 }
 export interface ListMenuType {
   show: (selectInfo: SelectInfo, position: Position) => void
@@ -47,8 +49,10 @@ export default forwardRef<ListMenuType, ListMenuProps>(({
   onSync,
   onSelectLocalFile,
   onRemove,
+  onCacheList,
 }, ref) => {
   const t = useI18n()
+  const isEnableOfflineCache = useSettingValue('common.isEnableOfflineCache')
   const menuRef = useRef<MenuType>(null)
   const selectInfoRef = useRef<SelectInfo>(initSelectInfo as SelectInfo)
   const [menus, setMenus] = useState<Menus>([])
@@ -91,6 +95,7 @@ export default forwardRef<ListMenuType, ListMenuProps>(({
       { action: 'rename', disabled: !rename, label: t('list_rename') },
       { action: 'sort', label: t('list_sort') },
       { action: 'duplicateMusic', label: t('lists__duplicate') },
+      ...(isEnableOfflineCache ? [{ action: 'cacheList' as const, label: t('offline_cache_cache_list') }] : []),
       { action: 'local_file', disabled: !local_file, label: t('list_select_local_file') },
       { action: 'sync', disabled: !sync || !local_file, label: t('list_sync') },
       { action: 'import', label: t('list_import') },
@@ -132,6 +137,9 @@ export default forwardRef<ListMenuType, ListMenuProps>(({
         break
       case 'remove':
         onRemove(selectInfo.listInfo as LX.List.UserListInfo)
+        break
+      case 'cacheList':
+        onCacheList(selectInfo.listInfo)
         break
 
       default:

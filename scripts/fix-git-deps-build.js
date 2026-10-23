@@ -96,6 +96,41 @@ const convertToEsm = (code) => {
 let fixed = 0
 let skipped = 0
 
+/**
+ * 修正 react-native-track-player 原生的播放状态映射。
+ *
+ * 原始实现（ExoPlayback.getState）：
+ *   case Player.STATE_READY:
+ *     return player.getPlayWhenReady() && player.isPlaying() ? STATE_PLAYING : STATE_PAUSED;
+ *
+ * 问题：部分机型上 ExoPlayer.isPlaying() 恒为 false（AudioTrack 已经 started、
+ * 解码器也正常工作，但播放位置不推进），于是状态一直被上报成 PAUSED，
+ * App 收不到「播放中」事件 → 进度不动、状态文字一直卡在「音乐加载中」。
+ *
+ * 修正：STATE_READY 时只要 playWhenReady（即 App 要求播放）就上报 PLAYING；
+ * 真正的暂停 playWhenReady=false，仍会正确上报 PAUSED。
+ *
+ * 该补丁是幂等的：已打过补丁的文件不会重复处理。
+ */
+const patchNativeStateMapping = (pkgDir) => {
+  const target = path.join(
+    pkgDir,
+    'android/src/main/java/com/guichaguri/trackplayer/service/player/ExoPlayback.java',
+  )
+  if (!fs.existsSync(target)) return
+  const code = fs.readFileSync(target, 'utf8')
+  const patched = code.replace(
+    /return player\.getPlayWhenReady\(\) && player\.isPlaying\(\) \? PlaybackStateCompat\.STATE_PLAYING : PlaybackStateCompat\.STATE_PAUSED;/,
+    'return player.getPlayWhenReady() ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED;',
+  )
+  if (patched === code) {
+    log(`  ↳ 原生状态映射已是修正版，跳过: ${path.relative(pkgDir, target)}`)
+    return
+  }
+  fs.writeFileSync(target, patched)
+  log(`  ↳ 已修正原生播放状态映射: ${path.relative(pkgDir, target)}`)
+}
+
 for (const { name, out, kind } of targets) {
   const pkgDir = path.join(nodeModules, name)
   if (!fs.existsSync(pkgDir)) {
@@ -117,6 +152,9 @@ for (const { name, out, kind } of targets) {
     path.join(mainField, 'index.js'),
   ]
   const mainExists = mainCandidates.some((c) => c && fs.existsSync(path.join(pkgDir, c)))
+
+  // 原生补丁与 JS 产物无关：即使跳过 JS 构建也必须执行，否则老产物上的原生缺陷无法修复
+  patchNativeStateMapping(pkgDir)
 
   // 已有构建产物：确认 main 指向的文件存在即可
   if (mainExists) {
@@ -147,13 +185,41 @@ for (const { name, out, kind } of targets) {
       '--target', 'es2017',
       '--jsx', 'react',
       '--declaration',
-      '--esModuleInterop',
-      '--allowSyntheticDefaultImports',
+      // ⚠️ 不能加 --esModuleInterop！
+      // tsc 在开启该选项时会把 `import * as X from 'cjs-module'` 编译成
+      // `const X = __importStar(require('cjs-module'))`，得到的是**对象**而不是模块本身。
+      // react-native-track-player 里有
+      //   import * as resolveAssetSource from 'react-native/Libraries/Image/resolveAssetSource'
+      // （RN 内部是 CommonJS，module.exports = fn），开启互操作后
+      // resolveAssetSource(path) 会抛 "TypeError: Object is not a function"，
+      // 导致 TrackPlayer.add() 必然失败 → **任何歌曲都播不出声音**。
+      // 与上游 bob 产物保持一致：不加这两个选项，通配符导入编译为直接 require。
       '--skipLibCheck',
       '--rootDir', path.join(pkgDir, 'src'),
       ...sources,
     ]
     run(process.execPath, tscArgs, pkgDir)
+
+    // 兜底：把对 RN 内部 CommonJS 模块的通配符导入还原为直接 require。
+    // （RN 的 Libraries/* 都是 CommonJS，module.exports = fn，用 __importStar 包一层
+    //   会得到对象，调用时报 "Object is not a function"。）
+    const fixWildcardRequire = (dir) => {
+      if (!fs.existsSync(dir)) return
+      for (const file of fs.readdirSync(dir)) {
+        const full = path.join(dir, file)
+        if (fs.statSync(full).isDirectory()) { fixWildcardRequire(full); continue }
+        if (!file.endsWith('.js')) continue
+        const code = fs.readFileSync(full, 'utf8')
+        if (!code.includes('__importStar(require("react-native/')) continue
+        const fixedCode = code.replace(
+          /__importStar\(require\((["'])react-native\/([^"']+)\1\)\)/g,
+          'require($1react-native/$2$1)',
+        )
+        fs.writeFileSync(full, fixedCode)
+        log(`  ↳ 修正通配符导入: ${path.relative(pkgDir, full)}`)
+      }
+    }
+    fixWildcardRequire(commonjsDir)
 
     if (kind === 'bob') {
       // bob 的标准输出结构：

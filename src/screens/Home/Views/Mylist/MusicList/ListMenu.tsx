@@ -4,6 +4,8 @@ import Menu, { type Menus, type MenuType, type Position } from '@/components/com
 import { hasDislike } from '@/core/dislikeList'
 import { existsFile } from '@/utils/fs'
 import { hasMusicUrlByMusic } from '@/utils/data'
+import { isCached } from '@/core/music/offlineCache'
+import { useSettingValue } from '@/store/setting/hook'
 
 export interface SelectInfo {
   musicInfo: LX.Music.MusicInfo
@@ -25,6 +27,8 @@ export interface ListMenuProps {
   onToggleSource: (selectInfo: SelectInfo) => void
   onMusicSourceDetail: (selectInfo: SelectInfo) => void
   onRemoveCache: (selectInfo: SelectInfo) => void
+  onCacheSong: (selectInfo: SelectInfo) => void
+  onRemoveOfflineCache: (selectInfo: SelectInfo) => void
   onDislikeMusic: (selectInfo: SelectInfo) => void
   onRemove: (selectInfo: SelectInfo) => void
 }
@@ -45,6 +49,7 @@ const hasUrlCache = async(musicInfo: LX.Music.MusicInfo) => {
 }
 export default forwardRef<ListMenuType, ListMenuProps>((props, ref) => {
   const t = useI18n()
+  const isEnableOfflineCache = useSettingValue('common.isEnableOfflineCache')
   const [visible, setVisible] = useState(false)
   const menuRef = useRef<MenuType>(null)
   const selectInfoRef = useRef<SelectInfo>(initSelectInfo as SelectInfo)
@@ -67,25 +72,34 @@ export default forwardRef<ListMenuType, ListMenuProps>((props, ref) => {
   const handleSetMenu = (musicInfo: LX.Music.MusicInfo) => {
     let edit_metadata = false
     let has_url_cache = false
+    let is_offline_cached = false
     const isLocal = musicInfo.source == 'local'
-    const menu = [
+    // 注意：不能用 Menus 标注（Menus 是 Readonly 数组，splice 不可用），
+    // 这里用可变数组类型，元素结构与 Menus 保持一致。
+    const menu: Array<Menus[number]> = [
       { action: 'play', label: t('play') },
       { action: 'playLater', label: t('play_later') },
       // { action: 'download', label: '下载' },
       { action: 'add', label: t('add_to') },
       { action: 'move', label: t('move_to') },
+      ...(isEnableOfflineCache ? [{ action: 'cacheSong' as const, label: t('offline_cache_cache_song') }] : []),
       { action: 'changePosition', label: t('change_position') },
       { action: 'toggleSource', label: t('toggle_source') },
       { action: 'copyName', label: t('copy_name') },
       { action: 'musicSourceDetail', disabled: isLocal, label: t('music_source_detail') },
       { action: 'removeCache', disabled: !has_url_cache, label: t('list_remove_cache') },
+      ...(isEnableOfflineCache ? [{ action: 'removeOfflineCache' as const, disabled: !is_offline_cached, label: t('offline_cache_remove_cache') }] : []),
       // { action: 'musicSearch', label: t('music_search') },
       { action: 'dislike', disabled: hasDislike(musicInfo), label: t('dislike') },
       { action: 'remove', label: t('delete') },
     ]
     if (isLocal) menu.splice(5, 0, { action: 'editMetadata', disabled: !edit_metadata, label: t('edit_metadata') })
     setMenus(menu)
-    void Promise.all([isLocal ? hasEditMetadata(musicInfo) : Promise.resolve(false), hasUrlCache(musicInfo)]).then(([_edit_metadata, _has_url_cache]) => {
+    void Promise.all([
+      isLocal ? hasEditMetadata(musicInfo) : Promise.resolve(false),
+      hasUrlCache(musicInfo),
+      isCached(musicInfo),
+    ]).then(([_edit_metadata, _has_url_cache, _is_offline_cached]) => {
       // console.log(_edit_metadata)
       let isUpdated = false
       if (edit_metadata != _edit_metadata) {
@@ -96,6 +110,12 @@ export default forwardRef<ListMenuType, ListMenuProps>((props, ref) => {
       if (has_url_cache != _has_url_cache) {
         has_url_cache = _has_url_cache
         menu[menu.findIndex(m => m.action == 'removeCache')].disabled = !has_url_cache
+        isUpdated ||= true
+      }
+      const offlineIdx = menu.findIndex(m => m.action == 'removeOfflineCache')
+      if (offlineIdx >= 0 && is_offline_cached != _is_offline_cached) {
+        is_offline_cached = _is_offline_cached
+        menu[offlineIdx].disabled = !is_offline_cached
         isUpdated ||= true
       }
 
@@ -147,6 +167,12 @@ export default forwardRef<ListMenuType, ListMenuProps>((props, ref) => {
         break
       case 'removeCache':
         props.onRemoveCache(selectInfo)
+        break
+      case 'cacheSong':
+        props.onCacheSong(selectInfo)
+        break
+      case 'removeOfflineCache':
+        props.onRemoveOfflineCache(selectInfo)
         break
       case 'dislike':
         props.onDislikeMusic(selectInfo)

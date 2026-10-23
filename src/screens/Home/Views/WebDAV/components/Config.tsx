@@ -13,6 +13,9 @@ import { useSettingValue } from '@/store/setting/hook'
 import { createStyle, toast, tipDialog } from '@/utils/tools'
 import { useTheme } from '@/store/theme/hook'
 import { getWebDavConfig, testConnection, syncNow } from '@/plugins/sync/webdav'
+import QrShareModal from './QrShareModal'
+import QrScanModal from './QrScanModal'
+import type { WebDavQRConfig } from './qrConfig'
 
 const addressRxp = /^https?:\/\/\S+/i
 
@@ -33,6 +36,21 @@ const WebDavConfig = memo(() => {
 
   // 当前正在执行的动作（用于按钮 loading 与禁用）
   const [action, setAction] = useState<ActionType>(null)
+  // 二维码分享 / 扫码导入弹窗
+  const [shareVisible, setShareVisible] = useState(false)
+  const [scanVisible, setScanVisible] = useState(false)
+
+  // 扫码导入：将二维码中的配置回填到设置项
+  const handleQrImport = useCallback((cfg: WebDavQRConfig) => {
+    updateSetting({
+      'sync.webdav.url': cfg.url,
+      'sync.webdav.username': cfg.username,
+      'sync.webdav.password': cfg.password,
+      'sync.webdav.path': cfg.path,
+    })
+    setScanVisible(false)
+    toast(t('setting_sync_webdav_qr_import_success'))
+  }, [t])
 
   const handleUrlChange = useCallback((text: string, cb: (v: string) => void) => {
     const v = text.trim()
@@ -49,11 +67,12 @@ const WebDavConfig = memo(() => {
   const makeTextChange = (key: 'sync.webdav.username' | 'sync.webdav.password' | 'sync.webdav.path') =>
     (text: string, cb: (v: string) => void) => {
       const v = text.trim()
-      updateSetting({ [key]: v } as Partial<LX.AppSetting>)
+      const setting: Partial<LX.AppSetting> = { [key]: v }
+      updateSetting(setting)
       cb(v)
     }
 
-  const handleTest = useCallback(async () => {
+  const handleTest = useCallback(async() => {
     if (action) return
     const config = getWebDavConfig()
     if (!config.url) {
@@ -81,7 +100,7 @@ const WebDavConfig = memo(() => {
     }
   }, [action, t])
 
-  const handleSync = useCallback(async () => {
+  const handleSync = useCallback(async() => {
     if (action) return
     if (!url) {
       await tipDialog({ title: t('setting_sync_webdav_sync_now'), message: t('setting_sync_webdav_url_empty') })
@@ -192,8 +211,23 @@ const WebDavConfig = memo(() => {
         <Button disabled={busy || !url} onPress={handleSync}>
           {action === 'sync' ? t('setting_sync_webdav_syncing') : t('setting_sync_webdav_sync_now')}
         </Button>
+        <Button disabled={!url} onPress={() => { setShareVisible(true) }}>
+          {t('setting_sync_webdav_qr_share')}
+        </Button>
+        <Button disabled={busy} onPress={() => { setScanVisible(true) }}>
+          {t('setting_sync_webdav_qr_scan')}
+        </Button>
         {busy ? <Loading size={14} style={styles.loading} /> : null}
       </View>
+
+      <QrShareModal
+        visible={shareVisible}
+        config={{ url, username, password, path }}
+        onClose={() => { setShareVisible(false) }} />
+      <QrScanModal
+        visible={scanVisible}
+        onClose={() => { setScanVisible(false) }}
+        onImport={handleQrImport} />
     </View>
   )
 })
@@ -213,6 +247,8 @@ const styles = createStyle({
   },
   btns: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: 8,
     alignItems: 'center',
     marginTop: 8,
     marginLeft: 15,

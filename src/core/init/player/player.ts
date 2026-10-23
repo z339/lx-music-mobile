@@ -10,6 +10,7 @@ import settingState from '@/store/setting/state'
 
 export default async(setting: LX.AppSetting) => {
   const setPlayStatus = () => {
+    console.log('[lx] setPlayStatus called')
     setIsPlay(true)
   }
   const setPauseStatus = () => {

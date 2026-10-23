@@ -8,11 +8,12 @@ import { useActiveListId, useListFetching } from '@/store/list/hook'
 import listState from '@/store/list/state'
 import { createStyle } from '@/utils/tools'
 import { getListPrevSelectId } from '@/utils/data'
-import { setActiveList } from '@/core/list'
+import { setActiveList, getListMusics } from '@/core/list'
 import Text from '@/components/common/Text'
 import { LIST_IDS } from '@/config/constant'
 import Loading from '@/components/common/Loading'
 import { useSettingValue } from '@/store/setting/hook'
+import { handleCacheList } from '@/utils/offlineCacheAction'
 
 export interface ActiveListProps {
   onShowSearchBar: () => void
@@ -63,6 +64,9 @@ export default forwardRef<ActiveListType, ActiveListProps>(({ onShowSearchBar, o
       <Icon style={styles.currentListIcon} color={theme['c-button-font']} name="chevron-right" size={12} />
       { fetching ? <Loading color={theme['c-button-font']} style={styles.loading} /> : null }
       <Text style={styles.currentListText} numberOfLines={1} color={theme['c-button-font']}>{currentListName}</Text>
+      <TouchableOpacity style={styles.currentListBtns} onPress={() => { void getListMusics(currentListId).then(list => handleCacheList(list, currentListId)) }}>
+        <Icon color={theme['c-button-font']} name="download-2" />
+      </TouchableOpacity>
       <TouchableOpacity style={styles.currentListBtns} onPress={onShowSearchBar}>
         <Icon color={theme['c-button-font']} name="search-2" />
       </TouchableOpacity>

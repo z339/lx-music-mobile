@@ -6,6 +6,7 @@ import Mylist from '../Views/Mylist'
 import Leaderboard from '../Views/Leaderboard'
 import Setting from '../Views/Setting'
 import WebDAV from '../Views/WebDAV'
+import OfflineCache from '../Views/OfflineCache'
 import commonState, { type InitState as CommonState } from '@/store/common/state'
 import { createStyle } from '@/utils/tools'
 import PagerView, { type PageScrollStateChangedNativeEvent, type PagerViewOnPageSelectedEvent } from 'react-native-pager-view'
@@ -198,6 +199,25 @@ const WebDAVPage = () => {
   return visible ? component : null
 }
 
+const OfflineCachePage = () => {
+  const [visible, setVisible] = useState(commonState.navActiveId == 'nav_offline_cache')
+  const component = useMemo(() => <OfflineCache />, [])
+  useEffect(() => {
+    const handleNavIdUpdate = (id: CommonState['navActiveId']) => {
+      if (id == 'nav_offline_cache') {
+        requestAnimationFrame(() => {
+          setVisible(true)
+        })
+      }
+    }
+    global.state_event.on('navActiveIdUpdated', handleNavIdUpdate)
+    return () => {
+      global.state_event.off('navActiveIdUpdated', handleNavIdUpdate)
+    }
+  }, [])
+  return visible ? component : null
+}
+
 const viewMap = {
   nav_search: 0,
   nav_songlist: 1,
@@ -205,6 +225,7 @@ const viewMap = {
   nav_love: 3,
   nav_setting: 4,
   nav_webdav: 5,
+  nav_offline_cache: 6,
 }
 const indexMap = [
   'nav_search',
@@ -213,6 +234,7 @@ const indexMap = [
   'nav_love',
   'nav_setting',
   'nav_webdav',
+  'nav_offline_cache',
 ] as const
 
 const Main = () => {
@@ -313,6 +335,9 @@ const Main = () => {
       </View>
       <View collapsable={false} key="nav_webdav" style={styles.pageStyle}>
         <WebDAVPage />
+      </View>
+      <View collapsable={false} key="nav_offline_cache" style={styles.pageStyle}>
+        <OfflineCachePage />
       </View>
       {/* <View collapsable={false} key="nav_search" style={styles.pageStyle}>
         <Search />

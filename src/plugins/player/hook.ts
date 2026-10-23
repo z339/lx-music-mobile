@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import TrackPlayer, { State, Event } from 'react-native-track-player'
+import { setStatusText } from '@/core/player/playStatus'
+import { useIsPlay } from '@/store/player/hook'
 
 /** Get current playback state and subsequent updatates  */
 export const usePlaybackState = () => {
@@ -69,6 +71,7 @@ const pollTrackPlayerStates = [
 export function useProgress(updateInterval: number) {
   const [state, setState] = useState({ position: 0, duration: 0, buffered: 0 })
   const playerState = usePlaybackState()
+  const appIsPlaying = useIsPlay()
   const stateRef = useRef(state)
   const isUnmountedRef = useRef(true)
   useEffect(() => {
@@ -87,6 +90,11 @@ export function useProgress(updateInterval: number) {
     // After the asynchronous code is executed, if the component has been uninstalled, do not update the status
     if (isUnmountedRef.current) return
 
+    // 进度已推进 → 音频确实在播放，清掉「音乐加载中」之类的状态文字。
+    // 部分机型上播放器不会上报 playing 状态（ExoPlayer.isPlaying() 恒为 false），
+    // 只能以「播放位置是否推进」作为是否真的在播放的判据。
+    if (position > 0) setStatusText('')
+
     if (
       position === stateRef.current.position &&
       duration === stateRef.current.duration &&
@@ -99,15 +107,17 @@ export function useProgress(updateInterval: number) {
   }
 
   useEffect(() => {
-    // @ts-expect-error
-    if (!pollTrackPlayerStates.includes(playerState)) return
+    // 部分机型上播放器的 playing 状态不可靠（ExoPlayer.isPlaying() 恒为 false），
+    // 只要 App 侧已下发播放就持续轮询进度，否则界面会一直停在 00:00。
+    const isPollingState = pollTrackPlayerStates.some(s => s === playerState)
+    if (!isPollingState && !appIsPlaying) return
 
     void getProgress()
 
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
     const poll = setInterval(getProgress, updateInterval || 1000)
     return () => { clearInterval(poll) }
-  }, [playerState, updateInterval])
+  }, [playerState, appIsPlaying, updateInterval])
 
   return state
 }

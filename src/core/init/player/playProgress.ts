@@ -83,6 +83,7 @@ export default () => {
 
 
   const handlePlay = () => {
+    console.log('[lx] playProgress handlePlay, marker =', (global as any).__lxRuntimeMarker)
     void getMaxTime()
     // prevProgressStatus = 'normal'
     // handleSetTaskBarState(playProgress.progress, prevProgressStatus)

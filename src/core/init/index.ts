@@ -8,7 +8,8 @@ import dataInit from './dataInit'
 import initSync from './sync'
 import initCommonState from './common'
 import { initDeeplink } from './deeplink'
-import { setApiSource } from '@/core/apiSource'
+import { setApiSource, getStartupApiSourceId } from '@/core/apiSource'
+import { initOfflineCache } from '@/core/music/offlineCache'
 import commonActions from '@/store/common/action'
 import settingState from '@/store/setting/state'
 import { checkUpdate } from '@/core/version'
@@ -48,7 +49,9 @@ export default async() => {
   await initUserApi(setting)
   bootLog('User Api inited.')
 
-  setApiSource(setting['common.apiSource'])
+  // 当前设置的音源可能为空（从未选择）或已失效（被删除/未安装），
+  // 此时自动回退到列表中第一个已安装的自定义源，避免播放时一直「歌曲链接获取中」。
+  setApiSource(getStartupApiSourceId(setting['common.apiSource']))
   bootLog('Api inited.')
 
   registerPlaybackService()
@@ -57,6 +60,8 @@ export default async() => {
   bootLog('Player inited.')
   await dataInit(setting)
   bootLog('Data inited.')
+  await initOfflineCache()
+  bootLog('Offline cache inited.')
   await initCommonState(setting)
   bootLog('Common State inited.')
 

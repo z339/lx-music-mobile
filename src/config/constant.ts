@@ -78,6 +78,9 @@ export const storageDataPrefix = {
   dislikeList: '@dislike_list',
 
   userApi: '@user_api__',
+  userApiSynced: '@user_api_synced__',
+
+  offlineCache: '@offline_cache__',
 } as const
 
 // v0.x.x 版本的 data keys
@@ -105,6 +108,7 @@ export const NAV_MENUS = [
   { id: 'nav_love', icon: 'love' },
   // { id: 'download', icon: 'download-2' },
   { id: 'nav_setting', icon: 'setting' },
+  { id: 'nav_offline_cache', icon: 'download-2' },
   { id: 'nav_webdav', icon: 'available_updates' },
 ] as const
 

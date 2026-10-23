@@ -3,6 +3,7 @@ import { useCallback, useRef } from 'react'
 import listState from '@/store/list/state'
 import ListMenu, { type ListMenuType, type Position, type SelectInfo } from './ListMenu'
 import { clearMusicUrl, handleDislikeMusic, handlePlay, handlePlayLater, handleRemove, handleShare, handleShowMusicSourceDetail, handleUpdateMusicInfo, handleUpdateMusicPosition } from './listAction'
+import { handleCacheSong, handleRemoveSongCache } from '@/utils/offlineCacheAction'
 import List, { type ListType } from './List'
 import ListMusicAdd, { type MusicAddModalType as ListMusicAddType } from '@/components/MusicAddModal'
 import ListMusicMultiAdd, { type MusicMultiAddModalType as ListAddMultiType } from '@/components/MusicMultiAddModal'
@@ -165,6 +166,8 @@ export default () => {
         onChangePosition={info => musicPositionModalRef.current?.show(info)}
         onToggleSource={info => musicToggleModalRef.current?.show(info)}
         onRemoveCache={info => { void clearMusicUrl(info.musicInfo) }}
+        onCacheSong={info => { void handleCacheSong(info.musicInfo, info.listId) }}
+        onRemoveOfflineCache={info => { void handleRemoveSongCache(info.musicInfo) }}
       />
       <MetadataEditModal
         ref={metadataEditTypeRef}

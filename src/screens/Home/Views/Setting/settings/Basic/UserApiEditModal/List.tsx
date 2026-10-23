@@ -4,7 +4,7 @@ import { View, TouchableOpacity, ScrollView } from 'react-native'
 import { confirmDialog, createStyle } from '@/utils/tools'
 import { useTheme } from '@/store/theme/hook'
 import { useI18n } from '@/lang'
-import { useUserApiList, state as userApiState } from '@/store/userApi'
+import { useUserApiList } from '@/store/userApi'
 import { useSettingValue } from '@/store/setting/hook'
 import { removeUserApi, setUserApiAllowShowUpdateAlert } from '@/core/userApi'
 import { BorderRadius } from '@/theme'
@@ -12,7 +12,7 @@ import CheckBox from '@/components/common/CheckBox'
 import { Icon } from '@/components/common/Icon'
 import settingState from '@/store/setting/state'
 import apiSourceInfo from '@/utils/musicSdk/api-source-info'
-import { setApiSource } from '@/core/apiSource'
+import { setApiSource, getAvailableUserApiId } from '@/core/apiSource'
 
 const formatVersionName = (version: string) => {
   return /^\d/.test(version) ? `v${version}` : version
@@ -88,9 +88,11 @@ export default () => {
     })
     if (!confirm) return
     void removeUserApi([id]).finally(() => {
+      // 被删除的正是当前正在使用的音源时，自动切换到其它可用音源，
+      // 否则删除后没有任何音源可用，播放会一直停在「歌曲链接获取中」。
       if (settingState.setting['common.apiSource'] == id) {
-        let backApiId = apiSourceInfo.find(api => !api.disabled)?.id
-        if (!backApiId) backApiId = userApiState.list[0]?.id
+        const builtinId = apiSourceInfo.find(api => !api.disabled)?.id
+        const backApiId = builtinId ?? getAvailableUserApiId()
         setApiSource(backApiId ?? '')
       }
     })

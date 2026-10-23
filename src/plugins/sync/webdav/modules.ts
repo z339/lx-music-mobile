@@ -1,8 +1,8 @@
-import { WebDAV, is404Error } from './webdav'
+import { is404Error, type WebDAV } from './webdav'
 import { CONSTANTS, decodeData, encodeData, getDeviceId } from './shared'
 import { getLocalListData, setLocalListData } from '@/plugins/sync/listEvent'
 import { getLocalDislikeData, setLocalDislikeData } from '@/plugins/sync/dislikeEvent'
-import { getUserApiList } from '@/utils/data'
+import { getUserApiList, parseUserApiScriptInfo } from '@/utils/data'
 import {
   toRemoteListData,
   fromRemoteListData,
@@ -19,15 +19,19 @@ import {
   mergeDislikeFullDataFromSnapshot,
 } from './merge'
 import settingState from '@/store/setting/state'
-import { log, logError } from './logger'
+import { setApiSource } from '@/core/apiSource'
+import { log } from './logger'
 import { stringMd5 } from 'react-native-quick-md5'
 import {
   getLocalUserApiList,
   mergeRemoteUserApiList,
+  saveSyncedIds,
   buildUserApiMeta,
   parseUserApiMeta,
   toFileName,
   fromFileName,
+  toRemoteId,
+  normalizeLocalId,
   USER_API_DIR,
   USER_API_META_FILE,
   type RemoteUserApiItem,
@@ -37,7 +41,7 @@ import {
 // 歌单同步（与 any-listen 的 webdav/modules/list.ts + shared/list/index.ts 对齐）
 // ----------------------------------------------------------------------------
 
-const checkListDirs = async (webDAV: WebDAV) => {
+const checkListDirs = async(webDAV: WebDAV) => {
   const dirs = [CONSTANTS.listDirectoryName, `${CONSTANTS.listDirectoryName}/${CONSTANTS.snapshotDirectoryName}`]
   for (const dir of dirs) {
     try {
@@ -50,13 +54,13 @@ const checkListDirs = async (webDAV: WebDAV) => {
   }
 }
 
-const runListSync = async (
+const runListSync = async(
   options: Options<RemoteListDataFull>,
   getListMergeMode?: () => Promise<LX.Sync.List.SyncMode>,
 ) => {
   const deviceId = getDeviceId()
   const snapshotInfo = await options.getSnapshotInfo()
-  log('info', `歌单同步开始：设备ID=${deviceId}，远端 latest=${snapshotInfo?.latest || '(空)'}，本机快照=${snapshotInfo?.clients?.[deviceId]?.snapshotKey || '(无)'}`)
+  log('info', `歌单同步开始：设备ID=${deviceId}，远端 latest=${snapshotInfo?.latest ?? '(空)'}，本机快照=${snapshotInfo?.clients?.[deviceId]?.snapshotKey ?? '(无)'}`)
   if (snapshotInfo?.latest) {
     const client = snapshotInfo.clients[deviceId]
     if (client?.snapshotKey) {
@@ -124,7 +128,7 @@ const runListSync = async (
         latestData,
         settingState.setting['list.addMusicLocationType'],
         getListMergeMode,
-        async () => toRemoteListData(await getLocalListData()),
+        async() => toRemoteListData(await getLocalListData()),
       )
       if (updateLocal) await options.overwriteLocalList(merged)
       const sdm = new SnapshotDataManage(options, getListDataMD5)
@@ -141,7 +145,7 @@ const runListSync = async (
   await sdm.saveSnapshotData(deviceId, localListData)
 }
 
-export const runSyncList = async (webDAV: WebDAV, getListMergeMode?: () => Promise<LX.Sync.List.SyncMode>) => {
+export const runSyncList = async(webDAV: WebDAV, getListMergeMode?: () => Promise<LX.Sync.List.SyncMode>) => {
   await runListSync(
     {
       async getSnapshotInfo() {
@@ -201,7 +205,7 @@ export const runSyncList = async (webDAV: WebDAV, getListMergeMode?: () => Promi
 // 不喜欢规则同步（规则为纯字符串，与 any-listen 一致）
 // ----------------------------------------------------------------------------
 
-const checkDislikeDirs = async (webDAV: WebDAV) => {
+const checkDislikeDirs = async(webDAV: WebDAV) => {
   const dirs = [CONSTANTS.dislikeDirectoryName, `${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotDirectoryName}`]
   for (const dir of dirs) {
     try {
@@ -214,13 +218,13 @@ const checkDislikeDirs = async (webDAV: WebDAV) => {
   }
 }
 
-const runDislikeSync = async (
+const runDislikeSync = async(
   options: Options<string>,
   getDislikeMergeMode?: () => Promise<LX.Sync.Dislike.SyncMode>,
 ) => {
   const deviceId = getDeviceId()
   const snapshotInfo = await options.getSnapshotInfo()
-  log('info', `不喜欢规则同步开始：设备ID=${deviceId}，远端 latest=${snapshotInfo?.latest || '(空)'}`)
+  log('info', `不喜欢规则同步开始：设备ID=${deviceId}，远端 latest=${snapshotInfo?.latest ?? '(空)'}`)
   if (snapshotInfo?.latest) {
     const client = snapshotInfo.clients[deviceId]
     if (client?.snapshotKey) {
@@ -278,7 +282,7 @@ const runDislikeSync = async (
         localData,
         latestData,
         getDislikeMergeMode,
-        async () => getLocalDislikeData(),
+        async() => getLocalDislikeData(),
       )
       if (updateLocal) await options.overwriteLocalList(merged)
       const sdm = new SnapshotDataManage(options, getDislikeRulesMD5)
@@ -295,7 +299,7 @@ const runDislikeSync = async (
   await sdm.saveSnapshotData(deviceId, localData)
 }
 
-export const runSyncDislike = async (webDAV: WebDAV, getDislikeMergeMode?: () => Promise<LX.Sync.Dislike.SyncMode>) => {
+export const runSyncDislike = async(webDAV: WebDAV, getDislikeMergeMode?: () => Promise<LX.Sync.Dislike.SyncMode>) => {
   await runDislikeSync(
     {
       async getSnapshotInfo() {
@@ -327,7 +331,7 @@ export const runSyncDislike = async (webDAV: WebDAV, getDislikeMergeMode?: () =>
       async getSnapshotData(key) {
         try {
           const file = await webDAV.get(`${CONSTANTS.dislikeDirectoryName}/${CONSTANTS.snapshotDirectoryName}/${key}`)
-          return file == null ? null : file
+          return file ?? null
         } catch (error) {
           if (!is404Error(error)) throw error
           return null
@@ -360,7 +364,7 @@ export const runSyncDislike = async (webDAV: WebDAV, getDislikeMergeMode?: () =>
 //   - 否则保留本地；本地独有的一律保留（不因同步而删除用户手动导入的音源）
 // ----------------------------------------------------------------------------
 
-const checkUserApiDirs = async (webDAV: WebDAV) => {
+const checkUserApiDirs = async(webDAV: WebDAV) => {
   try {
     await webDAV.ls(USER_API_DIR)
   } catch (error) {
@@ -383,7 +387,7 @@ const getUserApiDataMD5 = async(): Promise<string> => {
 }
 
 /** 读取远端 music-source 目录下的所有音源（每个 .js 一个音源） */
-const readRemoteUserApi = async (webDAV: WebDAV): Promise<RemoteUserApiItem[]> => {
+const readRemoteUserApi = async(webDAV: WebDAV): Promise<RemoteUserApiItem[]> => {
   await checkUserApiDirs(webDAV)
   const files = await webDAV.ls(USER_API_DIR)
 
@@ -409,19 +413,25 @@ const readRemoteUserApi = async (webDAV: WebDAV): Promise<RemoteUserApiItem[]> =
     try {
       const script = await webDAV.get(`${USER_API_DIR}/${file.name}`)
       if (!script) continue
-      items.push({
+      // 从脚本头解析出权威元信息（name/version/author/homepage 等），
+      // 与本地 addUserApi 导入时保持一致。meta.json 仅是索引，其 info 字段往往缺失或为空
+      // （例如 version 为空），若直接用它作为 info，脚本 init 时发给服务端的版本/标识不符，
+      // 会被服务端拒绝并抛「服务器异常」。故优先使用脚本头解析结果，meta 仅作缺失兜底。
+      const header = /^\/\*[\S|\s]+?\*\//.exec(script)
+      const scriptInfo: Partial<LX.UserApi.UserApiInfo> = header ? parseUserApiScriptInfo(header[0]) : {}
+      const meta = metaMap.get(id)
+      // 取第一个非空值：脚本头解析结果优先，meta 兜底，最后退回远端 id
+      const pick = (...vals: Array<string | undefined>): string => vals.find((v) => !!v) ?? ''
+      const info: LX.UserApi.UserApiInfo = {
         id,
-        info: metaMap.get(id) ?? {
-          id,
-          name: id,
-          description: '',
-          allowShowUpdateAlert: true,
-          author: '',
-          homepage: '',
-          version: '',
-        },
-        script,
-      })
+        name: pick(scriptInfo.name, meta?.name, id),
+        description: pick(scriptInfo.description, meta?.description),
+        author: pick(scriptInfo.author, meta?.author),
+        homepage: pick(scriptInfo.homepage, meta?.homepage),
+        version: pick(scriptInfo.version, meta?.version),
+        allowShowUpdateAlert: meta?.allowShowUpdateAlert ?? true,
+      }
+      items.push({ id, info, script })
     } catch (err) {
       log('warn', `读取远端音源文件失败: ${file.name}`, err)
     }
@@ -431,15 +441,16 @@ const readRemoteUserApi = async (webDAV: WebDAV): Promise<RemoteUserApiItem[]> =
 }
 
 /** 上传本地全部音源：每个音源写一个 .js 文件，外加 meta.json */
-const writeRemoteUserApi = async (webDAV: WebDAV, items: RemoteUserApiItem[]): Promise<void> => {
+const writeRemoteUserApi = async(webDAV: WebDAV, items: RemoteUserApiItem[]): Promise<void> => {
   await checkUserApiDirs(webDAV)
 
   // 删除远端已不存在的音源文件，避免残留
+  // 注意：items 中的 id 是本地前缀 id，需转成远端裸 id 才能与远端文件名对应
   const remoteFiles = await webDAV.ls(USER_API_DIR)
   const remoteIds = new Set(remoteFiles.filter((f) => !f.isDir).map((f) => fromFileName(f.name)).filter((v): v is string => !!v))
-  const localIds = new Set(items.map((i) => i.id))
+  const localRemoteIds = new Set(items.map((i) => toRemoteId(i.id)))
   for (const id of remoteIds) {
-    if (localIds.has(id)) continue
+    if (localRemoteIds.has(id)) continue
     log('info', `删除远端已不存在的音源: ${id}`)
     await webDAV.rm(`${USER_API_DIR}/${toFileName(id)}`).catch((err) => {
       if (!is404Error(err)) throw err
@@ -455,7 +466,7 @@ const writeRemoteUserApi = async (webDAV: WebDAV, items: RemoteUserApiItem[]): P
 }
 
 /** 用远端音源合并到本地，并刷新 store */
-const applyRemoteUserApi = async (webDAV: WebDAV): Promise<void> => {
+const applyRemoteUserApi = async(webDAV: WebDAV): Promise<void> => {
   const items = await readRemoteUserApi(webDAV)
   if (!items.length) {
     log('info', '远端无音源，跳过合并')
@@ -472,23 +483,65 @@ const applyRemoteUserApi = async (webDAV: WebDAV): Promise<void> => {
   } catch (err) {
     log('warn', '刷新音源列表 UI 失败（不影响同步结果）', err)
   }
+
+  // 迁移激活音源设置：旧版本写下的 common.apiSource 可能是缺前缀的裸 id
+  // （如「野花v1」），若不修正，setApiSource 仍走 else 分支（destroyUserApi），
+  // 播放会继续「换源失败」。将其映射到规范化后的前缀 id 并立即重新激活。
+  try {
+    const current = settingState.setting['common.apiSource']
+    if (current && normalizeLocalId(current) !== current) {
+      // 远端音源裸 id → 本地前缀 id
+      const remap = new Map(items.map((i) => [i.id, normalizeLocalId(i.id)]))
+      let newId = remap.get(current)
+      if (!newId) {
+        // 也可能是本地独有（远端没有）的裸 id 被规范化
+        const local = (await getUserApiList()).find((i) => i.id === normalizeLocalId(current) || i.id === current)
+        newId = local?.id
+      }
+      if (newId && newId !== current) {
+        setApiSource(newId)
+        log('info', `已将激活音源设置从 ${current} 迁移为 ${newId}`)
+      }
+    }
+  } catch (err) {
+    log('warn', '迁移激活音源设置失败（可手动在设置中重新选择）', err)
+  }
+
+  // 同步后若当前没有可用音源（例如首次同步、同步前的音源已被删除），
+  // 自动激活一个已安装的自定义源。
+  // 否则本项目（已移除全部内置音源）会没有任何可用音源，播放会一直失败。
+  try {
+    const { isApiSourceAvailable, getAvailableUserApiId } = await import('@/core/apiSource')
+    if (!isApiSourceAvailable(settingState.setting['common.apiSource'])) {
+      const fallback = getAvailableUserApiId()
+      if (fallback) {
+        setApiSource(fallback)
+        log('info', `同步后自动激活音源：${fallback}`)
+      }
+    }
+  } catch (err) {
+    log('warn', '同步后自动激活音源失败（可手动在设置中选择）', err)
+  }
 }
 
-const runUserApiSync = async (webDAV: WebDAV) => {
+const runUserApiSync = async(webDAV: WebDAV) => {
   log('info', `音源同步开始：设备ID=${getDeviceId()}，目录=${USER_API_DIR}`)
 
-  // 1) 先把远端音源合并到本地（保证不丢本地独有音源，也不丢远端新增）
+  // 1) 先把远端音源合并到本地（新增/更新/远端删除均在此处理）
   await applyRemoteUserApi(webDAV)
 
-  // 2) 再上传合并后的完整结果
+  // 2) 再上传合并后的完整结果（本地删除的音源会在此从远端清除）
   const items = await getLocalUserApiList()
   await writeRemoteUserApi(webDAV, items)
+
+  // 3) 所有当前本地音源均视为“已建立同步关系”，后续任一端删除都会双向同步
+  await saveSyncedIds(new Set(items.map((i) => normalizeLocalId(i.id))))
 
   const key = await getUserApiDataMD5()
   log('info', `音源同步完成，共 ${items.length} 个，指纹=${key}`)
 }
 
-export const runSyncUserApi = async (webDAV: WebDAV) => {
+export const runSyncUserApi = async(webDAV: WebDAV) => {
   await runUserApiSync(webDAV)
 }
 
@@ -508,7 +561,7 @@ const wrapMergeMode = <T extends SyncOptions['getListMergeMode'] | SyncOptions['
   webDAV: WebDAV,
 ): T => {
   if (!fn) return undefined as T
-  return (async () => {
+  return (async() => {
     const mode = await fn()
     if (mode !== 'cancel') {
       if (!(await webDAV.checkCurrentLock())) throw new Error('Lock file is missing, sync cancelled')
@@ -519,15 +572,15 @@ const wrapMergeMode = <T extends SyncOptions['getListMergeMode'] | SyncOptions['
 
 export const runSync = (webDAV: WebDAV, options: SyncOptions) => {
   const syncTasks: Array<(webDAV: WebDAV) => Promise<void>> = []
-  syncTasks.push(async () => runSyncList(webDAV, wrapMergeMode(options.getListMergeMode, webDAV)))
-  syncTasks.push(async () => runSyncDislike(webDAV, wrapMergeMode(options.getDislikeMergeMode, webDAV)))
-  if (options.syncUserApi) syncTasks.push(async () => runSyncUserApi(webDAV))
+  syncTasks.push(async() => runSyncList(webDAV, wrapMergeMode(options.getListMergeMode, webDAV)))
+  syncTasks.push(async() => runSyncDislike(webDAV, wrapMergeMode(options.getDislikeMergeMode, webDAV)))
+  if (options.syncUserApi) syncTasks.push(async() => runSyncUserApi(webDAV))
 
   let cancelled = false
   const cancel = () => {
     cancelled = true
   }
-  const runNextTask = async (index: number) => {
+  const runNextTask = async(index: number) => {
     if (index >= syncTasks.length || cancelled) {
       options.onEnd(cancelled ? new Error('cancel') : undefined)
       return

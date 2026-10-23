@@ -112,8 +112,15 @@ export const isTempTrack = (trackId: string) => /\/\/default$/.test(trackId)
 
 export const getCurrentTrackId = async() => {
   const currentTrackIndex = await TrackPlayer.getCurrentTrack()
-  return list[currentTrackIndex]?.id
+  if (currentTrackIndex == null || currentTrackIndex < 0) return undefined
+  // 以原生队列为准取当前曲目 id。
+  // 本地 list 与原生队列在 remove()/splice() 的异步间隙可能短暂错位，
+  // 一旦取到 default 占位轨道的 id，isTempId() 会恒为 true，
+  // 导致所有播放状态事件被丢弃（进度不动、状态卡在「音乐加载中」）。
+  const track = await TrackPlayer.getTrack(currentTrackIndex)
+  return track?.id ?? list[currentTrackIndex]?.id
 }
+
 export const getCurrentTrack = async() => {
   const currentTrackIndex = await TrackPlayer.getCurrentTrack()
   return list[currentTrackIndex]
@@ -153,9 +160,18 @@ const handlePlayMusic = async(musicInfo: LX.Player.PlayMusic, url: string, time:
   const track = tracks[0]
   // await updateMusicInfo(track)
   const currentTrackIndex = await TrackPlayer.getCurrentTrack()
+  console.log('[player] handlePlayMusic: curIndex=', currentTrackIndex, '| isTemp=', isTempTrack(track.id as string), '| restore=', !!global.lx.restorePlayInfo, '| time=', time)
   await TrackPlayer.add(tracks).then(() => list.push(...tracks))
   const queue = await TrackPlayer.getQueue() as LX.Player.Track[]
-  await TrackPlayer.skip(queue.findIndex(t => t.id == track.id))
+  const index = queue.findIndex(t => t.id == track.id)
+  // 队列里找不到目标曲目时不能直接 skip(-1)，否则会抛错并让整条播放链卡死
+  if (index < 0) console.log('[player] track not found in queue:', track.id)
+  else {
+    await TrackPlayer.skip(index)
+    // 立即把当前曲目标记为真实曲目：否则 PlaybackTrackChanged 事件到达前
+    // playerTrackId 可能仍指向 default 占位轨道，期间的播放状态事件会被 isTempId() 丢弃
+    global.lx.playerTrackId = track.id
+  }
 
   if (currentTrackIndex == null) {
     if (!isTempTrack(track.id as string)) {
@@ -169,6 +185,7 @@ const handlePlayMusic = async(musicInfo: LX.Player.PlayMusic, url: string, time:
       // if (startupAutoPlay) store.dispatch(playerAction.playMusic())
       } else {
         await TrackPlayer.play()
+        console.log('[player] play() called (no curIndex), state=', await TrackPlayer.getState())
       }
     }
   } else {
@@ -176,6 +193,7 @@ const handlePlayMusic = async(musicInfo: LX.Player.PlayMusic, url: string, time:
     if (!isTempTrack(track.id as string)) {
       await TrackPlayer.seekTo(time)
       await TrackPlayer.play()
+      console.log('[player] play() called, state=', await TrackPlayer.getState(), '| curIndex=', await TrackPlayer.getCurrentTrack())
     }
   }
 
@@ -187,9 +205,14 @@ let playPromise = Promise.resolve()
 let actionId = Math.random()
 export const playMusic = (musicInfo: LX.Player.PlayMusic, url: string, time: number) => {
   const id = actionId = Math.random()
-  void playPromise.finally(() => {
+  // ⚠️ playPromise 一旦 reject，后续播放都会卡在 finally 回调里不再执行，
+  // 表现为「点了歌完全没反应 / 一直停在加载中」。
+  // 这里先 catch 掉上一次的异常，保证播放链不会因为一次失败而永久卡死。
+  void playPromise.catch(() => {}).finally(() => {
     if (id != actionId) return
-    playPromise = handlePlayMusic(musicInfo, url, time)
+    playPromise = handlePlayMusic(musicInfo, url, time).catch((err: any) => {
+      console.log('[player] play music failed:', err?.stack ?? err)
+    })
   })
 }
 
