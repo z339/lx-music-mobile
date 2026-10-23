@@ -1,0 +1,48 @@
+name: Sync upstream master
+
+# 单向自动同步：上游 lyswhut/lx-music-mobile 的 master -> 本 fork 的 master
+# master -> webdav 的合并不在此处做，由人工决定（本地 git merge origin/master）。
+on:
+  schedule:
+    - cron: '17 1 * * *'      # 每天 09:17 (北京时间) 检查上游更新
+  workflow_dispatch:         # 允许在 Actions 页面手动触发
+
+permissions:
+  contents: write            # 允许推送到本仓库 master
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote and fetch
+        run: |
+          git remote add upstream https://github.com/lyswhut/lx-music-mobile.git \
+            || git remote set-url upstream https://github.com/lyswhut/lx-music-mobile.git
+          git fetch upstream master
+
+      - name: Merge upstream into master
+        run: |
+          # master 上始终保留本工作流文件本身，因此无法 fast-forward；
+          # 用 --no-ff 合入上游新提交，使 master 持续领先于 upstream/master，
+          # 保证定时任务每次都能找到本文件并继续运行。
+          # 上游更新时会产生一个 merge commit；无更新时则为 "Already up to date"。
+          git merge --no-ff upstream/master -m "chore: sync upstream master"
+
+      - name: Push to origin master
+        run: git push origin master
